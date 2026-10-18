@@ -1,0 +1,25 @@
+{
+  "name": "loop-portal-gateway",
+  "description": "Gateway do Portal do Cliente: valida o login do cliente e chama o Sankhya com as credenciais do servidor.",
+  "private": true,
+  "type": "module",
+  "main": "lib/src/firebase/index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test \"lib/test/**/*.test.js\"",
+    "deploy": "npm run build && firebase deploy --only functions:gateway",
+    "logs": "firebase functions:log --only portalGateway"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "firebase-functions": "^6.1.0",
+    "jose": "^5.9.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "~5.7.2"
+  }
+}

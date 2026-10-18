@@ -1,0 +1,142 @@
+import {
+  type CredenciaisSankhya,
+  type EnvelopeSankhya,
+  ErroGateway,
+  type FonteCredenciais,
+  type ModuloSankhya,
+  type PortaSankhya,
+} from './tipos.ts';
+
+const BASE = 'https://api.sankhya.com.br';
+
+/** Sessão do login legado (appkey/usuário/senha) não informa validade. */
+const VALIDADE_LOGIN_MS = 10 * 60 * 1000;
+const MARGEM_MS = 60 * 1000;
+const TIMEOUT_MS = 25_000;
+
+export interface OpcoesSankhya {
+  http?: typeof fetch;
+  agora?: () => number;
+}
+
+/**
+ * Cliente do API Gateway do Sankhya com a sessão técnica guardada no
+ * servidor. Reaproveita a sessão entre chamadas, refaz o login uma vez se o
+ * Sankhya recusar a sessão e nunca registra credenciais ou corpos.
+ */
+export class SankhyaCliente implements PortaSankhya {
+  private readonly http: typeof fetch;
+  private readonly agora: () => number;
+  private sessao?: { token: string; validaAte: number };
+  private loginEmAndamento?: Promise<string>;
+
+  constructor(
+    private readonly credenciais: FonteCredenciais,
+    opcoes: OpcoesSankhya = {},
+  ) {
+    this.http = opcoes.http ?? fetch;
+    this.agora = opcoes.agora ?? Date.now;
+  }
+
+  async chamar(serviceName: string, modulo: ModuloSankhya, requestBody: Record<string, unknown>): Promise<EnvelopeSankhya> {
+    const url = `${BASE}/gateway/v1/${modulo}/service.sbr?serviceName=${encodeURIComponent(serviceName)}&outputType=json`;
+    const corpo = JSON.stringify({ serviceName, requestBody });
+
+    for (let tentativa = 0; tentativa < 2; tentativa++) {
+      const token = await this.token();
+      const r = await this.enviar(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: corpo,
+      });
+      const json = (await lerJson(r)) as EnvelopeSankhya | undefined;
+      if (sessaoRecusada(r.status, json) && tentativa === 0) {
+        this.invalidar(token);
+        continue;
+      }
+      if (!r.ok || !json) {
+        throw new ErroGateway(502, 'SANKHYA_INDISPONIVEL', 'O ERP não respondeu como esperado. Tente novamente.');
+      }
+      return json;
+    }
+    throw new ErroGateway(502, 'SANKHYA_SESSAO', 'Não foi possível abrir sessão no ERP.');
+  }
+
+  private async token(): Promise<string> {
+    if (this.sessao && this.agora() < this.sessao.validaAte - MARGEM_MS) {
+      return this.sessao.token;
+    }
+    // Várias chamadas simultâneas compartilham o mesmo login.
+    this.loginEmAndamento ??= this.login().finally(() => {
+      this.loginEmAndamento = undefined;
+    });
+    return this.loginEmAndamento;
+  }
+
+  private invalidar(token: string): void {
+    if (this.sessao?.token === token) this.sessao = undefined;
+  }
+
+  private async login(): Promise<string> {
+    const c = await this.credenciais();
+    const { token, validadeMs } = c.modo === 'OAUTH' ? await this.loginOAuth(c) : await this.loginLegado(c);
+    this.sessao = { token, validaAte: this.agora() + validadeMs };
+    return token;
+  }
+
+  private async loginOAuth(c: Extract<CredenciaisSankhya, { modo: 'OAUTH' }>) {
+    const form = new URLSearchParams({ grant_type: 'client_credentials', client_id: c.clientId, client_secret: c.clientSecret });
+    const r = await this.enviar(`${BASE}/authenticate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': c.xToken },
+      body: form.toString(),
+    });
+    const json = (await lerJson(r)) as { access_token?: string; expires_in?: number } | undefined;
+    if (!r.ok || !json?.access_token) throw erroLogin();
+    const segundos = Number(json.expires_in) > 0 ? Number(json.expires_in) : 300;
+    return { token: json.access_token, validadeMs: segundos * 1000 };
+  }
+
+  private async loginLegado(c: Extract<CredenciaisSankhya, { modo: 'LOGIN' }>) {
+    const r = await this.enviar(`${BASE}/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        token: c.xToken,
+        appkey: c.appKey,
+        username: c.usuario,
+        password: c.senha,
+      },
+    });
+    const json = (await lerJson(r)) as { bearerToken?: string } | undefined;
+    if (!r.ok || !json?.bearerToken) throw erroLogin();
+    return { token: json.bearerToken, validadeMs: VALIDADE_LOGIN_MS };
+  }
+
+  private async enviar(url: string, init: RequestInit): Promise<Response> {
+    try {
+      return await this.http(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    } catch {
+      // sem detalhes: a mensagem do fetch pode carregar a URL com parâmetros
+      throw new ErroGateway(504, 'SANKHYA_TEMPO', 'O ERP demorou a responder. Tente novamente.');
+    }
+  }
+}
+
+function erroLogin(): ErroGateway {
+  return new ErroGateway(502, 'SANKHYA_LOGIN', 'Não foi possível abrir sessão no ERP. Verifique as credenciais do servidor.');
+}
+
+/** Sessão expirada ou recusada: HTTP 401/403 ou status "3" no envelope. */
+function sessaoRecusada(http: number, json: EnvelopeSankhya | undefined): boolean {
+  return http === 401 || http === 403 || String(json?.status ?? '') === '3';
+}
+
+async function lerJson(r: Response): Promise<unknown> {
+  try {
+    const t = await r.text();
+    return t ? JSON.parse(t) : undefined;
+  } catch {
+    return undefined;
+  }
+}
