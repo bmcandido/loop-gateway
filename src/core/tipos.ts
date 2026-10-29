@@ -16,10 +16,16 @@ export interface ValidadorToken {
   validar(token: string): Promise<UsuarioAutenticado>;
 }
 
-/** Credenciais do Sankhya do cliente. Ficam só no servidor. */
-export type CredenciaisSankhya =
-  | { modo: 'OAUTH'; xToken: string; clientId: string; clientSecret: string }
-  | { modo: 'LOGIN'; xToken: string; appKey: string; usuario: string; senha: string };
+/**
+ * Credenciais OAuth do Sankhya do cliente. Ficam só no servidor.
+ * [baseUrl] muda entre produção e teste (ex.: https://api.sankhya.com.br).
+ */
+export interface CredenciaisSankhya {
+  baseUrl: string;
+  xToken: string;
+  clientId: string;
+  clientSecret: string;
+}
 
 export type FonteCredenciais = () => Promise<CredenciaisSankhya>;
 

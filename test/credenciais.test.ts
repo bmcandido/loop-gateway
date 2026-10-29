@@ -1,72 +1,92 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { credenciaisDoFirestore, type LeitorFirestore } from '../src/firebase/credenciais.ts';
+import { CNPJ_LOOP, credenciaisDoSupabase } from '../src/core/credenciais.ts';
+import { ErroGateway } from '../src/core/tipos.ts';
 
 const CNPJ = '36.841.880/0001-76';
 
-function fakeDb(docs: Record<string, Record<string, unknown>>, apiKey?: Record<string, unknown>) {
-  const lidos: string[] = [];
-  const db: LeitorFirestore = {
-    doc(caminho) {
-      return {
-        async get() {
-          lidos.push(caminho);
-          return { data: () => docs[caminho] };
-        },
-      };
-    },
-    collection(caminho) {
-      return {
-        limit() {
-          return {
-            async get() {
-              lidos.push(caminho);
-              return { empty: !apiKey, docs: apiKey ? [{ data: () => apiKey }] : [] };
-            },
-          };
-        },
-      };
-    },
-  };
-  return { db, lidos };
+type Tabelas = { clientes?: Record<string, unknown>[]; loopapp?: Record<string, unknown>[] };
+
+function supabaseFalso(tabelas: Tabelas, status = 200) {
+  const pedidos: { url: URL; headers: Record<string, string> }[] = [];
+  const http = (async (url: string | URL | Request, init?: RequestInit) => {
+    const u = new URL(String(url));
+    pedidos.push({ url: u, headers: (init?.headers ?? {}) as Record<string, string> });
+    const tabela = u.pathname.split('/').pop() as keyof Tabelas;
+    // filtra como o PostgREST: coluna=eq.valor
+    const linhas = (tabelas[tabela] ?? []).filter((l) =>
+      [...u.searchParams].every(([k, v]) => k === 'select' || k === 'limit' || `eq.${l[k]}` === v),
+    );
+    return new Response(JSON.stringify(linhas), { status });
+  }) as typeof fetch;
+  return { http, pedidos };
 }
 
-const LOGIN = { token: ' xtok ', appKey: 'ak', userName: 'tecnico', password: 'senha' };
+const APPS = [
+  { cpfCnpj: CNPJ_LOOP, tipoIntegracao: 'producao', clienteId: 'cid-p', clienteSecret: 'cs-p', urlBase: 'https://api.sankhya.com.br' },
+  { cpfCnpj: CNPJ_LOOP, tipoIntegracao: 'teste', clienteId: 'cid-t', clienteSecret: 'cs-t', urlBase: 'https://api.sandbox.sankhya.com.br' },
+];
 
-test('documento privado tem prioridade e dispensa os documentos que o app lê', async () => {
-  const { db, lidos } = fakeDb({ 'portalPrivado/36841880000176': LOGIN });
-  const c = await credenciaisDoFirestore(db, CNPJ)();
-  assert.deepEqual(c, { modo: 'LOGIN', xToken: 'xtok', appKey: 'ak', usuario: 'tecnico', senha: 'senha' });
-  assert.deepEqual(lidos, ['portalPrivado/36841880000176']);
-});
+const opcoes = (http: typeof fetch, chave = 'jwt-service-role') => ({ url: 'https://ref.supabase.co/', chave, cnpj: CNPJ, http });
 
-test('sem documento privado usa empresas/{cnpj} + apiKey (versão de teste antes do corte)', async () => {
-  const { db, lidos } = fakeDb(
-    { 'empresas/36841880000176': { token: 'xtok', oautAuthetication: true } },
-    { clienteIdProducao: 'cid', clienteSecretProducao: 'csec' },
-  );
-  const c = await credenciaisDoFirestore(db, CNPJ)();
-  assert.deepEqual(c, { modo: 'OAUTH', xToken: 'xtok', clientId: 'cid', clientSecret: 'csec' });
-  assert.ok(lidos.includes('apiKey'));
-});
-
-test('credencial faltando é erro, sem expor valores', async () => {
-  const { db } = fakeDb({ 'portalPrivado/36841880000176': { ...LOGIN, password: '' } });
-  await assert.rejects(credenciaisDoFirestore(db, CNPJ)(), (e: Error) => {
-    assert.match(e.message, /incompletas/);
-    assert.doesNotMatch(e.message, /tecnico|xtok/);
-    return true;
+test('produção: X-Token do cliente + app OAuth de produção', async () => {
+  const { http, pedidos } = supabaseFalso({
+    clientes: [{ cpfCnpj: '36841880000176', token: ' xt ', tipoIntegracao: 'producao' }],
+    loopapp: APPS,
   });
+  const c = await credenciaisDoSupabase(opcoes(http))();
+  assert.deepEqual(c, { baseUrl: 'https://api.sankhya.com.br', xToken: 'xt', clientId: 'cid-p', clientSecret: 'cs-p' });
+  assert.equal(pedidos[0].url.origin + pedidos[0].url.pathname, 'https://ref.supabase.co/rest/v1/clientes');
+  assert.equal(pedidos[0].headers.apikey, 'jwt-service-role');
+  assert.equal(pedidos[0].headers.Authorization, 'Bearer jwt-service-role');
+});
+
+test('teste: tipoIntegracao do cliente escolhe o app OAuth de teste', async () => {
+  const { http } = supabaseFalso({
+    clientes: [{ cpfCnpj: '36841880000176', token: 'xt', tipoIntegracao: 'teste' }],
+    loopapp: APPS,
+  });
+  const c = await credenciaisDoSupabase(opcoes(http))();
+  assert.equal(c.clientId, 'cid-t');
+  assert.equal(c.baseUrl, 'https://api.sandbox.sankhya.com.br');
+});
+
+test('chave sb_secret_ vai só no cabeçalho apikey', async () => {
+  const { http, pedidos } = supabaseFalso({ clientes: [{ cpfCnpj: '36841880000176', token: 'xt' }], loopapp: APPS });
+  await credenciaisDoSupabase(opcoes(http, 'sb_secret_x'))();
+  assert.equal(pedidos[0].headers.apikey, 'sb_secret_x');
+  assert.equal(pedidos[0].headers.Authorization, undefined);
+});
+
+test('cliente ausente, app ausente e campo vazio têm códigos próprios, sem expor valores', async () => {
+  const casos: [Tabelas, string][] = [
+    [{ loopapp: APPS }, 'CLIENTE_NAO_CADASTRADO'],
+    [{ clientes: [{ cpfCnpj: '36841880000176', token: 'xt', tipoIntegracao: 'teste' }], loopapp: [APPS[0]] }, 'LOOPAPP_NAO_CADASTRADO'],
+    [{ clientes: [{ cpfCnpj: '36841880000176', token: '' }], loopapp: APPS }, 'CREDENCIAIS_INCOMPLETAS'],
+  ];
+  for (const [tabelas, codigo] of casos) {
+    await assert.rejects(credenciaisDoSupabase(opcoes(supabaseFalso(tabelas).http))(), (e: ErroGateway) => {
+      assert.equal(e.codigo, codigo);
+      assert.doesNotMatch(e.message, /cid|cs-|xt/);
+      return true;
+    });
+  }
+});
+
+test('Supabase recusando a leitura', async () => {
+  const { http } = supabaseFalso({}, 401);
+  await assert.rejects(credenciaisDoSupabase(opcoes(http))(), (e: ErroGateway) => e.codigo === 'SUPABASE_RECUSOU');
 });
 
 test('cache evita nova leitura dentro de 5 minutos', async () => {
-  const { db, lidos } = fakeDb({ 'portalPrivado/36841880000176': LOGIN });
-  const fonte = credenciaisDoFirestore(db, CNPJ);
+  const { http, pedidos } = supabaseFalso({ clientes: [{ cpfCnpj: '36841880000176', token: 'xt' }], loopapp: APPS });
+  const fonte = credenciaisDoSupabase(opcoes(http));
   await fonte();
   await fonte();
-  assert.equal(lidos.length, 1);
+  assert.equal(pedidos.length, 2);
 });
 
-test('CNPJ inválido é recusado na configuração', () => {
-  assert.throws(() => credenciaisDoFirestore(fakeDb({}).db, '123'), /PORTAL_CNPJ/);
+test('configuração inválida é recusada', () => {
+  assert.throws(() => credenciaisDoSupabase({ url: 'https://x', chave: 'k', cnpj: '123' }), /PORTAL_CNPJ/);
+  assert.throws(() => credenciaisDoSupabase({ url: '', chave: '', cnpj: CNPJ }), /Supabase/);
 });

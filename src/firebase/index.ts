@@ -1,19 +1,19 @@
-import { initializeApp } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
 import { logger } from 'firebase-functions';
 import { defineBoolean, defineSecret, defineString } from 'firebase-functions/params';
 import { onRequest } from 'firebase-functions/v2/https';
 import { validadorFirebase } from '../auth/firebase.ts';
+import { credenciaisDoSupabase } from '../core/credenciais.ts';
 import { processar } from '../core/gateway.ts';
 import { SankhyaCliente } from '../core/sankhya.ts';
-import { credenciaisDoFirestore } from './credenciais.ts';
-
-initializeApp();
 
 /** Mesmo valor configurado no servidor Sankhya em LOOPPORTAL_GATEWAY_SECRET. */
 const SEGREDO = defineSecret('PORTAL_GATEWAY_SECRET');
-/** CNPJ da empresa (documento empresas/{cnpj} no Firestore). */
+/** CNPJ do cliente (linha de `clientes` no Supabase). */
 const CNPJ = defineString('PORTAL_CNPJ');
+/** Projeto Supabase com as tabelas `clientes` e `loopapp`. */
+const SUPABASE_URL = defineString('PORTAL_SUPABASE_URL');
+/** Chave secreta do Supabase (service_role / sb_secret_), só para leitura das credenciais. */
+const SUPABASE_CHAVE = defineSecret('PORTAL_SUPABASE_SECRET_KEY');
 /** Origens web autorizadas (CORS), separadas por vírgula. Apps nativos não enviam Origin. */
 const ORIGENS_WEB = defineString('PORTAL_ORIGENS_WEB', { default: '' });
 /** Só desligar em teste controlado: sem isso, conta com e-mail alheio acessa os dados do dono. */
@@ -24,7 +24,7 @@ let sankhya: SankhyaCliente | undefined;
 export const portalGateway = onRequest(
   {
     region: 'southamerica-east1',
-    secrets: [SEGREDO],
+    secrets: [SEGREDO, SUPABASE_CHAVE],
     maxInstances: 10,
     concurrency: 40,
     timeoutSeconds: 60,
@@ -50,7 +50,9 @@ export const portalGateway = onRequest(
     }
 
     // Uma sessão Sankhya por instância, reaproveitada entre requisições.
-    sankhya ??= new SankhyaCliente(credenciaisDoFirestore(getFirestore(), CNPJ.value()));
+    sankhya ??= new SankhyaCliente(
+      credenciaisDoSupabase({ url: SUPABASE_URL.value(), chave: SUPABASE_CHAVE.value(), cnpj: CNPJ.value() }),
+    );
 
     const resposta = await processar(
       {

@@ -7,10 +7,6 @@ import {
   type PortaSankhya,
 } from './tipos.ts';
 
-const BASE = 'https://api.sankhya.com.br';
-
-/** Sessão do login legado (appkey/usuário/senha) não informa validade. */
-const VALIDADE_LOGIN_MS = 10 * 60 * 1000;
 const MARGEM_MS = 60 * 1000;
 const TIMEOUT_MS = 25_000;
 
@@ -27,8 +23,8 @@ export interface OpcoesSankhya {
 export class SankhyaCliente implements PortaSankhya {
   private readonly http: typeof fetch;
   private readonly agora: () => number;
-  private sessao?: { token: string; validaAte: number };
-  private loginEmAndamento?: Promise<string>;
+  private sessao?: { token: string; baseUrl: string; validaAte: number };
+  private loginEmAndamento?: Promise<{ token: string; baseUrl: string }>;
 
   constructor(
     private readonly credenciais: FonteCredenciais,
@@ -39,11 +35,11 @@ export class SankhyaCliente implements PortaSankhya {
   }
 
   async chamar(serviceName: string, modulo: ModuloSankhya, requestBody: Record<string, unknown>): Promise<EnvelopeSankhya> {
-    const url = `${BASE}/gateway/v1/${modulo}/service.sbr?serviceName=${encodeURIComponent(serviceName)}&outputType=json`;
     const corpo = JSON.stringify({ serviceName, requestBody });
 
     for (let tentativa = 0; tentativa < 2; tentativa++) {
-      const token = await this.token();
+      const { token, baseUrl } = await this.sessaoValida();
+      const url = `${baseUrl}/gateway/v1/${modulo}/service.sbr?serviceName=${encodeURIComponent(serviceName)}&outputType=json`;
       const r = await this.enviar(url, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -62,9 +58,9 @@ export class SankhyaCliente implements PortaSankhya {
     throw new ErroGateway(502, 'SANKHYA_SESSAO', 'Não foi possível abrir sessão no ERP.');
   }
 
-  private async token(): Promise<string> {
+  private async sessaoValida(): Promise<{ token: string; baseUrl: string }> {
     if (this.sessao && this.agora() < this.sessao.validaAte - MARGEM_MS) {
-      return this.sessao.token;
+      return this.sessao;
     }
     // Várias chamadas simultâneas compartilham o mesmo login.
     this.loginEmAndamento ??= this.login().finally(() => {
@@ -77,16 +73,17 @@ export class SankhyaCliente implements PortaSankhya {
     if (this.sessao?.token === token) this.sessao = undefined;
   }
 
-  private async login(): Promise<string> {
+  private async login(): Promise<{ token: string; baseUrl: string }> {
     const c = await this.credenciais();
-    const { token, validadeMs } = c.modo === 'OAUTH' ? await this.loginOAuth(c) : await this.loginLegado(c);
-    this.sessao = { token, validaAte: this.agora() + validadeMs };
-    return token;
+    const baseUrl = c.baseUrl.replace(/\/+$/, '');
+    const { token, validadeMs } = await this.loginOAuth(c, baseUrl);
+    this.sessao = { token, baseUrl, validaAte: this.agora() + validadeMs };
+    return this.sessao;
   }
 
-  private async loginOAuth(c: Extract<CredenciaisSankhya, { modo: 'OAUTH' }>) {
+  private async loginOAuth(c: CredenciaisSankhya, baseUrl: string) {
     const form = new URLSearchParams({ grant_type: 'client_credentials', client_id: c.clientId, client_secret: c.clientSecret });
-    const r = await this.enviar(`${BASE}/authenticate`, {
+    const r = await this.enviar(`${baseUrl}/authenticate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Token': c.xToken },
       body: form.toString(),
@@ -95,22 +92,6 @@ export class SankhyaCliente implements PortaSankhya {
     if (!r.ok || !json?.access_token) throw erroLogin();
     const segundos = Number(json.expires_in) > 0 ? Number(json.expires_in) : 300;
     return { token: json.access_token, validadeMs: segundos * 1000 };
-  }
-
-  private async loginLegado(c: Extract<CredenciaisSankhya, { modo: 'LOGIN' }>) {
-    const r = await this.enviar(`${BASE}/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        token: c.xToken,
-        appkey: c.appKey,
-        username: c.usuario,
-        password: c.senha,
-      },
-    });
-    const json = (await lerJson(r)) as { bearerToken?: string } | undefined;
-    if (!r.ok || !json?.bearerToken) throw erroLogin();
-    return { token: json.bearerToken, validadeMs: VALIDADE_LOGIN_MS };
   }
 
   private async enviar(url: string, init: RequestInit): Promise<Response> {

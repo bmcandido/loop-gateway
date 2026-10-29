@@ -24,7 +24,6 @@ const publico: RegraServico = { acesso: 'PUBLICO', modulo: 'mge' };
 export const SERVICOS: Readonly<Record<string, RegraServico>> = Object.freeze({
   // Antes do login
   'LoopPortalVisualSP.doConsultar': publico,
-  'LoopPortalLicencaSP.doConsultar': publico,
   'LoopPortalBannerSP.doListarAtivos': publico,
   'LoopPortalBannerSP.doImagem': publico,
   'LoopPortalAppSP.consultarConfig': publico,

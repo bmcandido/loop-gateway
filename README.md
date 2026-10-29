@@ -4,6 +4,14 @@ O app deixa de falar direto com o Sankhya. Ele chama este gateway com o token de
 login do cliente; o gateway confere o token, chama o Sankhya com as credenciais
 do servidor e envia ao Add-on a identidade do cliente assinada (HMAC).
 
+Login no Sankhya só por OAuth (client_credentials). As credenciais vêm do
+Supabase, como no app: `clientes` (pelo `PORTAL_CNPJ`: `token` = X-Token e
+`tipoIntegracao`) e `loopapp` (CNPJ da Loop + o mesmo `tipoIntegracao`:
+`clienteId`, `clienteSecret`, `urlBase`). Trocar o cliente de produção para
+teste é mudar `clientes.tipoIntegracao`. Erros de configuração aparecem no log
+com o código (`CLIENTE_NAO_CADASTRADO`, `LOOPAPP_NAO_CADASTRADO`,
+`CREDENCIAIS_INCOMPLETAS`, `SUPABASE_RECUSOU`, `SUPABASE_INDISPONIVEL`).
+
 ```
 App ──(token de login)──▶ Gateway ──(sessão técnica + _portalAuth assinado)──▶ Sankhya / Add-on
 ```
@@ -39,7 +47,10 @@ Erros saem no envelope do Sankhya: `{status: "0", statusMessage, codigoGateway}`
    `standalone.conf`) e reiniciar. Publicar o Add-on novo.
 3. **Firebase** (plano Blaze):
    - `firebase functions:secrets:set PORTAL_GATEWAY_SECRET` (mesmo valor);
-   - copiar `.env.example` para `.env.<id-do-projeto>` e preencher;
+   - `firebase functions:secrets:set PORTAL_SUPABASE_SECRET_KEY` (chave
+     secreta do projeto Supabase, só leitura de `clientes`/`loopapp`);
+   - copiar `.env.example` para `.env.<id-do-projeto>` e preencher
+     (`PORTAL_CNPJ`, `PORTAL_SUPABASE_URL`, `PORTAL_ORIGENS_WEB`);
    - `npm install && npm test`;
    - `firebase deploy --only functions:gateway`.
 4. **Conferir**:
@@ -92,16 +103,14 @@ Na ordem, depois de a versão de teste aprovada:
    | Aluguéis pagos (inquilino)  | 85    |
 
 1. Publicar o app compilado com `PORTAL_GATEWAY_URL` no site de produção.
-2. Criar `portalPrivado/{cnpj}` com `token`, `oautAuthetication` e os campos
-   de `apiKey` (`appKey`, `userName`, `password`, `clienteIdProducao`,
-   `clienteSecretProducao`). O gateway passa a ler dali.
-3. Remover o campo `token` de `empresas/{cnpj}`.
+2. Conferir no Supabase a linha do cliente em `clientes` (`token`,
+   `tipoIntegracao`) e as de `loopapp` (produção e teste).
+3. Remover o campo `token` de `empresas/{cnpj}` (Firestore).
 4. Publicar `../firestore.gateway.rules` (conferir antes com as regras atuais
    do console e o conteúdo de `empresas/{cnpj}/empresa`, que segue legível).
-5. **Trocar a senha do usuário técnico do Sankhya e gerar novo X-Token**: os
-   dois estiveram no app (o X-Token também no código-fonte e no histórico do
-   git). Atualizar só `portalPrivado/{cnpj}`.
-6. Apagar `apiKey` (já não é lido por ninguém).
+5. **Gerar novo X-Token**: esteve no app (também no código-fonte e no
+   histórico do git). Atualizar `clientes.token` no Supabase.
+6. Apagar `apiKey` do Firestore (usuário/senha não são mais usados).
 
 A limpeza do campo `pass` (senha em texto gravada por versões antigas) não
 depende do corte, pois nada lê esse campo, e pode ser feita já:
