@@ -1,4 +1,5 @@
 import { identidadeAssinada, TAMANHO_MINIMO_SEGREDO } from './assinatura.ts';
+import type { VerificadorLicenca } from './licenca.ts';
 import { regraDoServico } from './servicos.ts';
 import {
   ErroGateway,
@@ -14,6 +15,8 @@ export interface DependenciasGateway {
   sankhya: PortaSankhya;
   /** Segredo HMAC compartilhado com o Add-on (LOOPPORTAL_GATEWAY_SECRET). */
   segredo: string;
+  /** Licença do cliente no Supabase; sem ela nenhum serviço é atendido. */
+  licenca: VerificadorLicenca;
   agoraSeg?: () => number;
   registrar?: (e: EventoGateway) => void;
 }
@@ -67,6 +70,8 @@ async function servico(req: Requisicao, deps: DependenciasGateway, evento: Event
   if (!regra) {
     throw new ErroGateway(403, 'SERVICO_NAO_PERMITIDO', 'Serviço não disponível para o portal.');
   }
+  // Licença inativa: nada do app passa, nem os serviços públicos da tela de entrada.
+  await deps.licenca();
   const requestBody = corpo?.requestBody === undefined ? {} : objeto(corpo.requestBody);
   if (!requestBody) {
     throw new ErroGateway(400, 'CORPO_INVALIDO', 'Requisição inválida.');

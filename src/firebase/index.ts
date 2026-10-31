@@ -3,6 +3,7 @@ import { defineBoolean, defineSecret, defineString } from 'firebase-functions/pa
 import { onRequest } from 'firebase-functions/v2/https';
 import { validadorFirebase } from '../auth/firebase.ts';
 import { credenciaisDoSupabase } from '../core/credenciais.ts';
+import { licencaDoSupabase, type VerificadorLicenca } from '../core/licenca.ts';
 import { processar } from '../core/gateway.ts';
 import { SankhyaCliente } from '../core/sankhya.ts';
 
@@ -18,8 +19,11 @@ const SUPABASE_CHAVE = defineSecret('PORTAL_SUPABASE_SECRET_KEY');
 const ORIGENS_WEB = defineString('PORTAL_ORIGENS_WEB', { default: '' });
 /** Só desligar em teste controlado: sem isso, conta com e-mail alheio acessa os dados do dono. */
 const EXIGE_EMAIL_VERIFICADO = defineBoolean('PORTAL_EXIGE_EMAIL_VERIFICADO', { default: true });
+/** codigoProduto do portal em `clientesProdutos` (o mesmo que o app confere). */
+const PRODUTO = defineString('PORTAL_PRODUTO', { default: 'LoopFinanceiro' });
 
 let sankhya: SankhyaCliente | undefined;
+let licenca: VerificadorLicenca | undefined;
 
 export const portalGateway = onRequest(
   {
@@ -53,6 +57,12 @@ export const portalGateway = onRequest(
     sankhya ??= new SankhyaCliente(
       credenciaisDoSupabase({ url: SUPABASE_URL.value(), chave: SUPABASE_CHAVE.value(), cnpj: CNPJ.value() }),
     );
+    licenca ??= licencaDoSupabase({
+      url: SUPABASE_URL.value(),
+      chave: SUPABASE_CHAVE.value(),
+      cnpj: CNPJ.value(),
+      produto: PRODUTO.value(),
+    });
 
     const resposta = await processar(
       {
@@ -65,6 +75,7 @@ export const portalGateway = onRequest(
         validador: validador(),
         sankhya,
         segredo: SEGREDO.value(),
+        licenca,
         // só metadados: nunca corpo, cabeçalhos, e-mail ou CPF
         registrar: (e) => (e.status >= 500 ? logger.error('portal-gateway', e) : logger.info('portal-gateway', e)),
       },

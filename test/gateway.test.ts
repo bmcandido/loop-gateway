@@ -25,6 +25,7 @@ function montar(extra: Partial<DependenciasGateway> = {}) {
   const deps: DependenciasGateway = {
     segredo: SEGREDO,
     sankhya,
+    licenca: async () => {},
     agoraSeg: () => 1760000000,
     registrar: (e) => eventos.push(e),
     validador: {
@@ -210,4 +211,20 @@ test('erro inesperado não vaza detalhes; evento sem dados pessoais', async () =
   assert.equal(ev.servico, 'LoopPortalSacSP.consultarSac');
   assert.equal(ev.uid, 'uidTeste123');
   assert.doesNotMatch(JSON.stringify(ev), /ana@loop/);
+});
+
+test('licença inativa: nenhum serviço chega ao Sankhya, nem os públicos', async () => {
+  const { deps, chamadas } = montar({
+    licenca: async () => {
+      throw new ErroGateway(403, 'LICENCA_INATIVA', 'Portal sem licença ativa. Entre em contato com a administradora.');
+    },
+  });
+  for (const [s, auth] of [['LoopPortalVisualSP.doConsultar', undefined], ['LoopPortalFinanceiroSP.consultarTitulos', `Bearer ${TOKEN_OK}`]] as const) {
+    const r = await processar(servico(s, {}, auth), deps);
+    assert.equal(r.status, 403, s);
+    assert.equal((r.corpo as { codigoGateway: string }).codigoGateway, 'LICENCA_INATIVA');
+  }
+  assert.equal(chamadas.length, 0);
+  // saúde continua respondendo para monitoramento
+  assert.equal((await processar({ metodo: 'GET', caminho: '/saude', corpo: null }, deps)).status, 200);
 });

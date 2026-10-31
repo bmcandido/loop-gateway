@@ -22,6 +22,14 @@ App ──(token de login)──▶ Gateway ──(sessão técnica + _portalAut
   enviado pelo app pelo usuário do portal com o mesmo e-mail do login.
 - Nenhum corpo, cabeçalho, e-mail ou CPF vai para o log. Só serviço, status,
   tempo e o uid do provedor.
+- Licença (`src/core/licenca.ts`): antes de qualquer serviço, confere no
+  Supabase `clientes.dataExpiracao` (vence no início do dia, horário de
+  Brasília) e o produto `PORTAL_PRODUTO` (padrão `LoopFinanceiro`) em
+  `clientesProdutos`. Recusa com `LICENCA_INATIVA` ou `LICENCA_EXPIRADA`
+  (403). Supabase fora: vale o último OK por até 10 dias; sem ele,
+  `LICENCA_INDISPONIVEL` (503). É a mesma regra do app, que também confere o
+  `licenca.json` assinado pelo LoopMais; aqui é a trava que o navegador não
+  contorna. `/saude` não passa pela licença.
 
 ## Rotas
 
