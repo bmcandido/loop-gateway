@@ -52,6 +52,32 @@ export function licencaDoSupabase(op: OpcoesLicenca): VerificadorLicenca {
     return Array.isArray(linhas) ? (linhas[0] as Linha | undefined) : undefined;
   }
 
+  /** false depois que o Supabase disse que a RPC não existe (migration V20261031_171 não aplicada). */
+  let rpcDisponivel = true;
+
+  /**
+   * public.licenca_status: uma chamada, só {contratado, dataExpiracao}. Devolve undefined quando
+   * a função ainda não existe no banco; aí vale a leitura das tabelas, como antes.
+   */
+  async function viaRpc(): Promise<{ cliente?: Linha; contratado?: Linha } | undefined> {
+    if (!rpcDisponivel) return undefined;
+    const r = await http(`${base}/rpc/licenca_status`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_cnpj: cnpj, p_produto: produto }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (r.status === 404) {
+      rpcDisponivel = false;
+      return undefined;
+    }
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const linhas = (await r.json()) as unknown;
+    const linha = Array.isArray(linhas) ? (linhas[0] as Linha | undefined) : undefined;
+    if (!linha) return {};
+    return { cliente: { dataExpiracao: linha.dataExpiracao }, contratado: linha.contratado === true ? linha : undefined };
+  }
+
   let decisao: { erro?: ErroGateway; ate: number } | undefined;
   let ultimoOk: { em: number; expira: number } | undefined;
 
@@ -65,8 +91,13 @@ export function licencaDoSupabase(op: OpcoesLicenca): VerificadorLicenca {
     let cliente: Linha | undefined;
     let contratado: Linha | undefined;
     try {
-      cliente = await primeira('clientes', { cpfCnpj: cnpj }, 'dataExpiracao');
-      contratado = cliente && (await primeira('clientesProdutos', { cpfCnpj: cnpj, codigoProduto: produto }, 'codigoProduto'));
+      const rpc = await viaRpc();
+      if (rpc) {
+        ({ cliente, contratado } = rpc);
+      } else {
+        cliente = await primeira('clientes', { cpfCnpj: cnpj }, 'dataExpiracao');
+        contratado = cliente && (await primeira('clientesProdutos', { cpfCnpj: cnpj, codigoProduto: produto }, 'codigoProduto'));
+      }
     } catch {
       // Supabase fora: só o último OK, dentro dos 10 dias e da expiração. A
       // decisão fica 1 min em cache para não esperar o timeout a cada chamada.
