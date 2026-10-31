@@ -16,8 +16,10 @@ export interface OpcoesFirebase {
  * ID token do Firebase Auth: RS256 assinado pelo Google, emissor e audiência
  * do projeto. As chaves públicas ficam em cache (jose respeita a rotação).
  */
-export function validadorFirebase(projeto: string, opcoes: OpcoesFirebase = {}): ValidadorToken {
-  if (!projeto) throw new Error('Projeto Firebase não informado.');
+export function validadorFirebase(projeto: string | string[], opcoes: OpcoesFirebase = {}): ValidadorToken {
+  // Gateway único: aceita login de mais de um projeto Firebase (apps de clientes diferentes).
+  const projetos = (Array.isArray(projeto) ? projeto : [projeto]).filter(Boolean);
+  if (!projetos.length) throw new Error('Projeto Firebase não informado.');
   const chaves = createRemoteJWKSet(new URL(JWKS_GOOGLE));
   const exigirVerificado = opcoes.exigirEmailVerificado ?? true;
   return {
@@ -25,10 +27,12 @@ export function validadorFirebase(projeto: string, opcoes: OpcoesFirebase = {}):
       let payload: JWTPayload;
       try {
         ({ payload } = await jwtVerify(token, chaves, {
-          issuer: `https://securetoken.google.com/${projeto}`,
-          audience: projeto,
+          issuer: projetos.map((p) => `https://securetoken.google.com/${p}`),
+          audience: projetos,
           algorithms: ['RS256'],
         }));
+        // emissor e audiência do MESMO projeto
+        if (payload.iss !== `https://securetoken.google.com/${payload.aud}`) throw new Error('iss/aud');
       } catch {
         throw new ErroGateway(401, 'TOKEN_INVALIDO', 'Sessão expirada. Entre novamente.');
       }

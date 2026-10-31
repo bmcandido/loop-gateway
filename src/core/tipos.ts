@@ -50,6 +50,8 @@ export interface EventoGateway {
   status: number;
   ms: number;
   uid?: string;
+  /** CNPJ da empresa cliente (da licença); não é dado pessoal. */
+  cnpj?: string;
   codigo?: string;
 }
 

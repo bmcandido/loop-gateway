@@ -1,11 +1,17 @@
-# Gateway do Portal do Cliente
+# Gateway ÚNICO do Portal do Cliente
+
+> Arquitetura completa, chaves e modelo para os outros apps:
+> `loop-central/loop-admin/docs/licenciamento/` (README, 01 a 06).
 
 O app deixa de falar direto com o Sankhya. Ele chama este gateway com o token de
-login do cliente; o gateway confere o token, chama o Sankhya com as credenciais
-do servidor e envia ao Add-on a identidade do cliente assinada (HMAC).
+login do cliente **e a licença assinada pelo Loop Mais** (`X-Loop-Licenca`); o
+gateway confere a licença (é dela que sai o CNPJ do cliente — um gateway para
+todos os clientes), confere o token, chama o Sankhya daquele cliente e envia ao
+Add-on a identidade assinada **v2 (ES256)**: o Add-on confere com a chave
+pública embarcada no pacote, sem nada configurado no servidor Sankhya.
 
 Login no Sankhya só por OAuth (client_credentials). As credenciais vêm do
-Supabase, como no app: `clientes` (pelo `PORTAL_CNPJ`: `token` = X-Token e
+Supabase, como no app: `clientes` (pelo CNPJ da licença: `token` = X-Token e
 `tipoIntegracao`) e `loopapp` (CNPJ da Loop + o mesmo `tipoIntegracao`:
 `clienteId`, `clienteSecret`, `urlBase`). Trocar o cliente de produção para
 teste é mudar `clientes.tipoIntegracao`. Erros de configuração aparecem no log
@@ -48,19 +54,23 @@ Erros saem no envelope do Sankhya: `{status: "0", statusMessage, codigoGateway}`
 
 ## Implantação (versão de teste primeiro)
 
-1. **Gerar o segredo** (uma vez por cliente):
-   `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`
-2. **Sankhya**: definir `LOOPPORTAL_GATEWAY_SECRET` com esse valor no processo do
-   servidor (variável de ambiente ou `-DLOOPPORTAL_GATEWAY_SECRET=...` no
-   `standalone.conf`) e reiniciar. Publicar o Add-on novo.
-3. **Firebase** (plano Blaze):
-   - `firebase functions:secrets:set PORTAL_GATEWAY_SECRET` (mesmo valor);
+**Uma vez só** (não existe passo por cliente):
+
+1. **Chave do gateway**: gerada no Loop Mais com
+   `node scripts/gerar-chave-gateway.js <arquivo.pem> loop-gateway-AAAA-MM`
+   (fora do repositório). A chave pública impressa vai em
+   `GatewayAssinatura.CHAVES_GATEWAY` de cada Add-on (já está a
+   `loop-gateway-2026-11`). Publicar o Add-on novo.
+2. **Firebase** (plano Blaze):
+   - `firebase functions:secrets:set PORTAL_GATEWAY_CHAVE_PRIVADA --data-file <arquivo.pem>`;
    - `firebase functions:secrets:set PORTAL_SUPABASE_SECRET_KEY` (chave
-     secreta do projeto Supabase, só leitura de `clientes`/`loopapp`);
-   - copiar `.env.example` para `.env.<id-do-projeto>` e preencher
-     (`PORTAL_CNPJ`, `PORTAL_SUPABASE_URL`, `PORTAL_ORIGENS_WEB`);
+     secreta do projeto Supabase, leitura de `clientes`/`loopapp`);
+   - `.env.<id-do-projeto>` com `PORTAL_SUPABASE_URL` e `PORTAL_GATEWAY_KID`
+     (ver `.env.example`; CNPJ e origens NÃO são configurados);
    - `npm install && npm test`;
-   - `firebase deploy --only functions:gateway`.
+   - `npm run deploy`.
+
+**Cliente novo**: emitir a licença no Loop Mais. Só isso.
 4. **Conferir**:
    - `GET .../portalGateway/saude` → `{"ok":true}`;
    - `POST .../portalGateway/servico` com `DbExplorerSP.executeQuery` → 403.
@@ -79,8 +89,11 @@ novo) e não assinadas (app antigo) até o corte.
 flutter build web --dart-define=PORTAL_GATEWAY_URL=https://southamerica-east1-<projeto>.cloudfunctions.net/portalGateway
 ```
 
-- Publicar em um site de teste do Hosting e colocar a origem dele em
-  `PORTAL_ORIGENS_WEB` (sem isso o navegador recebe 403).
+- O app envia o JWS do `licenca.json` em `X-Loop-Licenca` (`GatewayPortal.licenca`,
+  definido no `main.dart`). Sem licença válida o gateway responde
+  `LICENCA_AUSENTE`/`LICENCA_INVALIDA`.
+- CORS: qualquer origem por padrão (não há cookie). `PORTAL_ORIGENS_WEB` é
+  opcional para travar.
 - No modo gateway o app não baixa `apiKey`, não loga no Sankhya, não usa o
   proxy, não lista usuários do Firestore e não grava CPF/telefone lá. O
   usuário do portal vem de `LoopPortalAppSP.meuUsuario`, pelo e-mail do login.
@@ -131,8 +144,10 @@ node scripts/limpar-senhas-firestore.mjs <projeto> <cnpj> --aplicar  # remove
 ## Testes
 
 `npm test`: compila e roda os testes (`test/`). `test/assinatura.test.ts` usa
-o mesmo vetor de `GatewayAssinaturaTest.java` no Add-on: se um lado mudar o
-formato, os dois testes quebram.
+o mesmo vetor v2 de `GatewayAssinaturaTest.java` no Add-on (chave de teste em
+`test/fixtures.ts`): se um lado mudar o formato, os dois testes quebram.
+`test/licenca-app.test.ts` cobre a licença enviada pelo app (assinatura,
+CNPJ trocado, `alg` diferente, produto ausente).
 
 ## Pendências conhecidas
 

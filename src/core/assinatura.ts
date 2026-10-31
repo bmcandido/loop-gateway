@@ -2,11 +2,16 @@ import type { UsuarioAutenticado } from './tipos.ts';
 
 // Identidade assinada que o Add-on confere (businesRules.acesso.GatewayAssinatura).
 // Formato e mensagem precisam ser idênticos nas duas pontas.
+//
+// v2: ES256 com a chave privada ÚNICA do gateway; o Add-on confere com a chave pública que vai
+// embarcada no pacote. Nenhum segredo por cliente. O CNPJ (tirado da licença assinada pelo Loop Mais)
+// entra na mensagem: identidade emitida para o cliente A não serve no Sankhya do cliente B.
+// (A v1, HMAC com LOOPPORTAL_GATEWAY_SECRET por servidor, não é mais emitida.)
 
-export const TAMANHO_MINIMO_SEGREDO = 32;
-
-export interface PortalAuth {
-  v: 1;
+export interface PortalAuthV2 {
+  v: 2;
+  kid: string;
+  cnpj: string;
   origem: string;
   uid: string;
   email: string;
@@ -16,27 +21,28 @@ export interface PortalAuth {
 
 const texto = new TextEncoder();
 
-export function mensagem(origem: string, uid: string, email: string, ts: number): string {
-  return `v1\n${origem}\n${uid}\n${email}\n${ts}`;
+export function mensagemV2(cnpj: string, origem: string, uid: string, email: string, ts: number): string {
+  return `v2\n${cnpj}\n${origem}\n${uid}\n${email}\n${ts}`;
 }
 
-export async function assinar(segredo: string, msg: string): Promise<string> {
-  const chave = await crypto.subtle.importKey('raw', texto.encode(segredo), { name: 'HMAC', hash: 'SHA-256' }, false, [
-    'sign',
-  ]);
-  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', chave, texto.encode(msg)));
-  return base64Url(sig);
+/** Importa a chave privada (PKCS#8 PEM, EC P-256) guardada no Secret Manager. */
+export async function chavePrivadaGateway(pem: string): Promise<CryptoKey> {
+  const corpo = pem.replace(/-----(BEGIN|END) PRIVATE KEY-----/g, '').replace(/\s+/g, '');
+  if (!corpo) throw new Error('Chave privada do gateway vazia.');
+  const der = Uint8Array.from(atob(corpo), (c) => c.charCodeAt(0));
+  return crypto.subtle.importKey('pkcs8', der, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
 }
 
-export async function identidadeAssinada(u: UsuarioAutenticado, segredo: string, agoraSeg: number): Promise<PortalAuth> {
-  const ts = Math.floor(agoraSeg);
-  return {
-    v: 1,
-    origem: u.origem,
-    uid: u.uid,
-    email: u.email,
-    ts,
-    sig: await assinar(segredo, mensagem(u.origem, u.uid, u.email, ts)),
+export type AssinadorIdentidade = (u: UsuarioAutenticado, cnpj: string, agoraSeg: number) => Promise<PortalAuthV2>;
+
+/** Assinador v2. A assinatura sai no formato JOSE (r||s, 64 bytes), base64url sem padding. */
+export function assinadorV2(chave: CryptoKey, kid: string): AssinadorIdentidade {
+  return async (u, cnpj, agoraSeg) => {
+    const ts = Math.floor(agoraSeg);
+    const sig = new Uint8Array(
+      await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, chave, texto.encode(mensagemV2(cnpj, u.origem, u.uid, u.email, ts))),
+    );
+    return { v: 2, kid, cnpj, origem: u.origem, uid: u.uid, email: u.email, ts, sig: base64Url(sig) };
   };
 }
 

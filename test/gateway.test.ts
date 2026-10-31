@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { assinar, mensagem } from '../src/core/assinatura.ts';
+import { createPublicKey, verify } from 'node:crypto';
+import { assinadorV2, chavePrivadaGateway, mensagemV2 } from '../src/core/assinatura.ts';
+import { GATEWAY_TESTE } from './fixtures.ts';
 import { type DependenciasGateway, processar } from '../src/core/gateway.ts';
 import { ErroGateway, type EventoGateway, type ModuloSankhya, type PortaSankhya } from '../src/core/tipos.ts';
 
-const SEGREDO = 'segredo-de-teste-com-32-caracteres!!';
+const ASSINAR = assinadorV2(await chavePrivadaGateway(GATEWAY_TESTE.privada), GATEWAY_TESTE.kid);
+const CNPJ_A = '36841880000176';
+const CNPJ_B = '26314062000161';
+/** Licenças "já conferidas" (a conferência da assinatura tem teste próprio em licenca-app.test.ts). */
+const LICENCAS: Record<string, string> = { 'LIC-A': CNPJ_A, 'LIC-B': CNPJ_B };
 const TOKEN_OK = 'token-valido-de-teste-1234567890';
 
 interface Chamada {
@@ -16,6 +22,7 @@ interface Chamada {
 function montar(extra: Partial<DependenciasGateway> = {}) {
   const chamadas: Chamada[] = [];
   const eventos: EventoGateway[] = [];
+  const cnpjs: string[] = [];
   const sankhya: PortaSankhya = {
     async chamar(serviceName, modulo, body) {
       chamadas.push({ serviceName, modulo, body });
@@ -23,9 +30,17 @@ function montar(extra: Partial<DependenciasGateway> = {}) {
     },
   };
   const deps: DependenciasGateway = {
-    segredo: SEGREDO,
-    sankhya,
+    sankhya: (cnpj) => {
+      cnpjs.push(cnpj);
+      return sankhya;
+    },
+    licencaDoApp: async (jws) => {
+      const cnpj = jws ? LICENCAS[jws] : undefined;
+      if (!cnpj) throw new ErroGateway(401, 'LICENCA_AUSENTE', 'Licença do app não enviada. Atualize a página.');
+      return { cnpj };
+    },
     licenca: async () => {},
+    assinar: ASSINAR,
     agoraSeg: () => 1760000000,
     registrar: (e) => eventos.push(e),
     validador: {
@@ -36,13 +51,14 @@ function montar(extra: Partial<DependenciasGateway> = {}) {
     },
     ...extra,
   };
-  return { deps, chamadas, eventos };
+  return { deps, chamadas, eventos, cnpjs, porta: sankhya };
 }
 
-const servico = (serviceName: string, requestBody: unknown, authorization?: string) => ({
+const servico = (serviceName: string, requestBody: unknown, authorization?: string, licenca: string | null = 'LIC-A') => ({
   metodo: 'POST',
   caminho: '/servico',
   authorization,
+  licenca,
   corpo: { serviceName, requestBody },
 });
 
@@ -111,14 +127,20 @@ test('injeta identidade assinada e descarta a enviada pelo app', async () => {
   assert.equal(r.status, 200);
   const body = chamadas[0].body;
   assert.equal(body._portalEmail, undefined);
-  assert.deepEqual(body._portalAuth, {
-    v: 1,
+  const auth = body._portalAuth as Record<string, string | number>;
+  assert.deepEqual({ ...auth, sig: '' }, {
+    v: 2,
+    kid: 'loop-gateway-teste',
+    cnpj: CNPJ_A,
     origem: 'FIREBASE',
     uid: 'uidTeste123',
     email: 'ana@loop.com.br',
     ts: 1760000000,
-    sig: await assinar(SEGREDO, mensagem('FIREBASE', 'uidTeste123', 'ana@loop.com.br', 1760000000)),
+    sig: '',
   });
+  const publica = createPublicKey({ key: GATEWAY_TESTE.jwk, format: 'jwk' });
+  const msg = mensagemV2(CNPJ_A, 'FIREBASE', 'uidTeste123', 'ana@loop.com.br', 1760000000);
+  assert.ok(verify('sha256', Buffer.from(msg), { key: publica, dsaEncoding: 'ieee-p1363' }, Buffer.from(String(auth.sig), 'base64url')));
   // o codUsuPortal segue, mas o Add-on o substitui pelo do e-mail assinado
   assert.equal(body.codUsuPortal, 999);
 });
@@ -192,16 +214,30 @@ test('pagamento: estado não é gravado pelo cliente; cartão e comprovante segu
   assert.equal(chamadas.length, 2);
 });
 
-test('sem segredo configurado nada passa', async () => {
-  const { deps, chamadas } = montar({ segredo: 'curto' });
-  const r = await processar(servico('LoopPortalVisualSP.doConsultar', {}), deps);
-  assert.equal(r.status, 500);
+test('sem licença no cabeçalho (ou licença inválida) nada passa', async () => {
+  const { deps, chamadas } = montar();
+  for (const lic of [null, 'LIC-FORJADA']) {
+    const r = await processar(servico('LoopPortalVisualSP.doConsultar', {}, undefined, lic), deps);
+    assert.equal(r.status, 401);
+    assert.equal((r.corpo as { codigoGateway: string }).codigoGateway, 'LICENCA_AUSENTE');
+  }
   assert.equal(chamadas.length, 0);
 });
 
+test('gateway único: o cliente vem da licença (Sankhya, licença e identidade do CNPJ certo)', async () => {
+  const conferidos: string[] = [];
+  const { deps, chamadas, cnpjs, eventos } = montar({ licenca: async (c) => void conferidos.push(c) });
+  await processar(servico('LoopPortalSacSP.consultarSac', {}, `Bearer ${TOKEN_OK}`, 'LIC-A'), deps);
+  await processar(servico('LoopPortalSacSP.consultarSac', {}, `Bearer ${TOKEN_OK}`, 'LIC-B'), deps);
+  assert.deepEqual(conferidos, [CNPJ_A, CNPJ_B]);
+  assert.deepEqual(cnpjs, [CNPJ_A, CNPJ_B]);
+  assert.deepEqual(chamadas.map((c) => (c.body._portalAuth as { cnpj: string }).cnpj), [CNPJ_A, CNPJ_B]);
+  assert.deepEqual(eventos.map((e) => e.cnpj), [CNPJ_A, CNPJ_B]);
+});
+
 test('erro inesperado não vaza detalhes; evento sem dados pessoais', async () => {
-  const { deps, eventos } = montar();
-  deps.sankhya.chamar = async () => {
+  const { deps, eventos, porta } = montar();
+  porta.chamar = async () => {
     throw new Error('ORA-00942: tabela TGFPAR com senha xyz');
   };
   const r = await processar(servico('LoopPortalSacSP.consultarSac', {}, `Bearer ${TOKEN_OK}`), deps);
