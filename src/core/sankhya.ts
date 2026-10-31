@@ -130,9 +130,32 @@ async function lerJson(r: Response): Promise<unknown> {
  * lê como windows-1252 (superconjunto do ISO-8859-1).
  */
 export function decodificar(bytes: Uint8Array): string {
+  let t: string;
+  try {
+    t = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder('windows-1252').decode(bytes);
+  }
+  return repararDuplaCodificacao(t);
+}
+
+/**
+ * Texto UTF-8 convertido duas vezes pelo caminho Sankhya ("Configuração" chega
+ * como "ConfiguraÃ§Ã£o"). Se o texto tem esse padrão e todos os caracteres
+ * cabem em um byte, volta para bytes (ISO-8859-1) e lê de novo como UTF-8
+ * estrito. Texto normal (ou misto) não muda.
+ */
+export function repararDuplaCodificacao(t: string): string {
+  if (!/[ÃÂ][\u0080-¿]/.test(t)) return t;
+  const bytes = new Uint8Array(t.length);
+  for (let i = 0; i < t.length; i++) {
+    const c = t.charCodeAt(i);
+    if (c > 0xff) return t;
+    bytes[i] = c;
+  }
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
-    return new TextDecoder('windows-1252').decode(bytes);
+    return t;
   }
 }

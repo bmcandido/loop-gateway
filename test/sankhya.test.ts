@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { SankhyaCliente, decodificar } from '../src/core/sankhya.ts';
+import { SankhyaCliente, decodificar, repararDuplaCodificacao } from '../src/core/sankhya.ts';
 import type { CredenciaisSankhya } from '../src/core/tipos.ts';
 
 interface Pedido {
@@ -102,4 +102,13 @@ test('resposta em ISO-8859-1 do Sankhya chega com acentos corretos', async () =>
   );
   const r = (await new SankhyaCliente(async () => OAUTH, { http }).chamar('X', 'loop-portal', {})) as { rotulo?: string; responseBody?: { rotulo?: string } };
   assert.equal(r.rotulo ?? r.responseBody?.rotulo, 'Situação');
+});
+
+test('texto convertido duas vezes no Sankhya ("ConfiguraÃ§Ã£o") volta ao normal', () => {
+  assert.equal(repararDuplaCodificacao('ConfiguraÃ§Ã£o retornada'), 'Configuração retornada');
+  assert.equal(repararDuplaCodificacao('Este e-mail estÃ¡ em mais de um cadastro'), 'Este e-mail está em mais de um cadastro');
+  assert.equal(repararDuplaCodificacao('Configuração já certa'), 'Configuração já certa');
+  assert.equal(repararDuplaCodificacao('Ação € e Ã§'), 'Ação € e Ã§', 'misto: não mexe');
+  const duplo = new TextEncoder().encode('{"m":"SituaÃ§Ã£o"}');
+  assert.equal(decodificar(duplo), '{"m":"Situação"}');
 });
