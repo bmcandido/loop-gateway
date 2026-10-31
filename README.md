@@ -64,7 +64,9 @@ Erros saem no envelope do Sankhya: `{status: "0", statusMessage, codigoGateway}`
 ```
 npx supabase login
 npx supabase secrets set --project-ref zvncvdlfyeyktnuzxvlc PORTAL_GATEWAY_KID=loop-gateway-2026-11 PORTAL_FIREBASE_PROJETOS=portal-financeiro-c18b7
-npx supabase secrets set --project-ref zvncvdlfyeyktnuzxvlc PORTAL_GATEWAY_CHAVE_PRIVADA="$(Get-Content <arquivo.pem> -Raw)"
+$k = (Get-Content <arquivo.pem> | Where-Object { $_ -notmatch "-----" }) -join ""
+npx supabase secrets set --project-ref zvncvdlfyeyktnuzxvlc "PORTAL_GATEWAY_CHAVE_PRIVADA=$k"
+# (a chave vai numa linha só, sem as linhas -----: o PowerShell corta argumentos com quebra de linha)
 npm run deploy
 ```
 
