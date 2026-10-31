@@ -115,9 +115,24 @@ function sessaoRecusada(http: number, json: EnvelopeSankhya | undefined): boolea
 
 async function lerJson(r: Response): Promise<unknown> {
   try {
-    const t = await r.text();
+    const t = decodificar(new Uint8Array(await r.arrayBuffer()));
     return t ? JSON.parse(t) : undefined;
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * O Sankhya responde em ISO-8859-1 (padrão dos serviços), às vezes sem
+ * charset ou com um charset que não bate com o corpo; r.text() decodifica
+ * sempre como UTF-8 e troca os acentos por "�" ("Situa��o"). Texto acentuado
+ * em ISO-8859-1 quase nunca é UTF-8 válido: tenta UTF-8 estrito e, se falhar,
+ * lê como windows-1252 (superconjunto do ISO-8859-1).
+ */
+export function decodificar(bytes: Uint8Array): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder('windows-1252').decode(bytes);
   }
 }

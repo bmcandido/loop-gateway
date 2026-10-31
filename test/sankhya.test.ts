@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { SankhyaCliente } from '../src/core/sankhya.ts';
+import { SankhyaCliente, decodificar } from '../src/core/sankhya.ts';
 import type { CredenciaisSankhya } from '../src/core/tipos.ts';
 
 interface Pedido {
@@ -89,4 +89,17 @@ test('falha de login não expõe credenciais', async () => {
     assert.doesNotMatch(e.message, /\bcid\b|\bcs\b|secret/);
     return true;
   });
+});
+
+test('resposta em ISO-8859-1 do Sankhya chega com acentos corretos', async () => {
+  const latin1 = Uint8Array.from([0x53, 0x69, 0x74, 0x75, 0x61, 0xe7, 0xe3, 0x6f]); // "Situação" em ISO-8859-1
+  assert.equal(decodificar(latin1), 'Situação');
+  assert.equal(decodificar(new TextEncoder().encode('Situação')), 'Situação');
+
+  const corpo = Uint8Array.from([...new TextEncoder().encode('{"status":"1","responseBody":{"rotulo":"Situa'), 0xe7, 0xe3, ...new TextEncoder().encode('o"}}')]);
+  const { http } = fetchFalso((p) =>
+    ehLogin(p) ? json({ access_token: 'oa' }) : new Response(corpo, { status: 200, headers: { 'content-type': 'application/json;charset=ISO-8859-1' } }),
+  );
+  const r = (await new SankhyaCliente(async () => OAUTH, { http }).chamar('X', 'loop-portal', {})) as { rotulo?: string; responseBody?: { rotulo?: string } };
+  assert.equal(r.rotulo ?? r.responseBody?.rotulo, 'Situação');
 });
