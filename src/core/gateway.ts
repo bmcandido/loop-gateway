@@ -20,6 +20,11 @@ export interface DependenciasGateway {
   sankhya: (cnpj: string) => PortaSankhya;
   /** Assina a identidade do usuário para o Add-on (v2, ES256). */
   assinar: AssinadorIdentidade;
+  /**
+   * O cliente (CNPJ) exige e-mail confirmado? Vem da configuração do Add-on
+   * (Exigir confirmação de e-mail no login). Ausente = exige.
+   */
+  exigeEmailConfirmado?: (cnpj: string) => Promise<boolean>;
   agoraSeg?: () => number;
   registrar?: (e: EventoGateway) => void;
 }
@@ -87,6 +92,10 @@ async function servico(req: Requisicao, deps: DependenciasGateway, evento: Event
     throw new ErroGateway(401, 'LOGIN_NECESSARIO', 'Sessão expirada. Entre novamente.');
   }
   evento.uid = usuario?.uid;
+  if (usuario?.emailVerificado === false && (deps.exigeEmailConfirmado ? await deps.exigeEmailConfirmado(cnpj) : true)) {
+    // conta Firebase sem e-mail confirmado poderia se passar por outro cliente (o portal acha o cliente pelo e-mail)
+    throw new ErroGateway(403, 'EMAIL_NAO_VERIFICADO', 'Confirme seu e-mail pelo link que enviamos para acessar o portal.');
+  }
 
   const body: Record<string, unknown> = { ...requestBody };
   for (const c of CAMPOS_RESERVADOS) delete body[c];

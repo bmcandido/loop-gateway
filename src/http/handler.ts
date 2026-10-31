@@ -3,12 +3,13 @@ import { validadorFirebase } from '../auth/firebase.ts';
 import { validadorSupabase } from '../auth/supabase.ts';
 import { assinadorV2, chavePrivadaGateway, type AssinadorIdentidade } from '../core/assinatura.ts';
 import { credenciaisDoSupabase } from '../core/credenciais.ts';
-import { type DependenciasGateway, processar } from '../core/gateway.ts';
+import { type DependenciasGateway, desembrulhar, processar } from '../core/gateway.ts';
 import { type ChaveLicenca, verificadorLicencaDoApp } from '../core/licenca-app.ts';
 import { licencaDoSupabase } from '../core/licenca.ts';
 import { porCliente } from '../core/por-cliente.ts';
 import { SankhyaCliente } from '../core/sankhya.ts';
-import type { EventoGateway, ValidadorToken } from '../core/tipos.ts';
+import { regraDoServico } from '../core/servicos.ts';
+import type { EventoGateway, PortaSankhya, ValidadorToken } from '../core/tipos.ts';
 
 // Gateway ÚNICO dos apps Loop em HTTP padrão (Request → Response). Roda na Edge Function do
 // Supabase (padrão) e nos testes em Node. Nada é configurado por cliente: o cliente vem da licença
@@ -41,10 +42,15 @@ export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Resp
   const licenca = porCliente((cnpj) => licencaDoSupabase({ ...supabase, cnpj, produto: cfg.produto || 'LoopPortal' }));
   const sankhya = porCliente((cnpj) => new SankhyaCliente(credenciaisDoSupabase({ ...supabase, cnpj })));
   const projetos = (cfg.projetosFirebase ?? []).filter(Boolean);
+  // A confirmação de e-mail é decidida por cliente em processar(), com a configuração do Add-on.
   const validador: ValidadorToken = validadorCombinado(
     validadorSupabase(cfg.supabaseUrl),
-    projetos.length ? validadorFirebase(projetos, { exigirEmailVerificado: cfg.exigirEmailVerificado ?? true }) : undefined,
+    projetos.length ? validadorFirebase(projetos, { exigirEmailVerificado: false }) : undefined,
   );
+  // PORTAL_EXIGE_EMAIL_VERIFICADO=false desliga para todos; senão vale a chave de cada cliente.
+  const exigeEmailConfirmado = cfg.exigirEmailVerificado === false
+    ? async () => false
+    : exigenciaDeEmailPorCliente((cnpj) => sankhya(cnpj));
   const origens = (cfg.origensWeb ?? []).filter(Boolean);
   let assinar: Promise<AssinadorIdentidade> | undefined;
 
@@ -101,12 +107,51 @@ export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Resp
         licenca: (cnpj) => licenca(cnpj)(),
         sankhya,
         assinar: assinador,
+        exigeEmailConfirmado,
         registrar: cfg.registrar,
         ...cfg.sobrescrever,
       },
     );
     return json(resposta.status, resposta.corpo, cors);
   };
+}
+
+const CACHE_EXIGENCIA_MS = 5 * 60 * 1000;
+
+/**
+ * Lê "Exigir confirmação de e-mail no login" (LOOPPORTALCFG.EXIGECONFEMAIL) pelo
+ * LoopPortalAppSP.consultarConfig do cliente, com cache de 5 min por CNPJ. Qualquer
+ * falha ou valor diferente de "N" = exige (padrão seguro).
+ */
+export function exigenciaDeEmailPorCliente(
+  sankhyaDe: (cnpj: string) => PortaSankhya,
+  agora: () => number = Date.now,
+): (cnpj: string) => Promise<boolean> {
+  const cache = new Map<string, { em: number; exige: boolean }>();
+  return async (cnpj) => {
+    const c = cache.get(cnpj);
+    if (c && agora() - c.em < CACHE_EXIGENCIA_MS) return c.exige;
+    let exige = true;
+    try {
+      const envelope = await sankhyaDe(cnpj).chamar('LoopPortalAppSP.consultarConfig', regraDoServico('LoopPortalAppSP.consultarConfig')!.modulo, {});
+      exige = valorExigeConfEmail(desembrulhar(envelope)) !== 'N';
+    } catch {
+      exige = true;
+    }
+    cache.set(cnpj, { em: agora(), exige });
+    return exige;
+  };
+}
+
+function valorExigeConfEmail(v: unknown, prof = 0): string | undefined {
+  if (!v || typeof v !== 'object' || prof > 6) return undefined;
+  const o = v as Record<string, unknown>;
+  if (typeof o.exigeConfEmail === 'string') return o.exigeConfEmail.trim().toUpperCase();
+  for (const k of Object.keys(o)) {
+    const r = valorExigeConfEmail(o[k], prof + 1);
+    if (r !== undefined) return r;
+  }
+  return undefined;
 }
 
 /**

@@ -55,5 +55,5 @@ export function usuarioDoPayload(origem: UsuarioAutenticado['origem'], payload: 
     // conta sem e-mail (ex.: telefone/anônima) não identifica cliente do portal
     throw new ErroGateway(401, 'TOKEN_SEM_EMAIL', 'Esta conta não tem e-mail válido para o portal.');
   }
-  return { origem, uid, email };
+  return origem === 'FIREBASE' ? { origem, uid, email, emailVerificado: payload.email_verified === true } : { origem, uid, email };
 }

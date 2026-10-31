@@ -9,6 +9,8 @@ export interface UsuarioAutenticado {
   uid: string;
   /** E-mail do token, já em minúsculas. */
   email: string;
+  /** Firebase: e-mail confirmado no token. Ausente = não se aplica (Supabase). */
+  emailVerificado?: boolean;
 }
 
 export interface ValidadorToken {

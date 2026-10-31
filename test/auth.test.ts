@@ -22,6 +22,7 @@ test('payload: normaliza e-mail e exige uid/e-mail válidos', () => {
     origem: 'FIREBASE',
     uid: 'AbC123',
     email: 'ana@loop.com.br',
+    emailVerificado: false,
   });
   assert.throws(() => usuarioDoPayload('FIREBASE', { sub: 'AbC123' }), /e-mail/);
   assert.throws(() => usuarioDoPayload('FIREBASE', { sub: 'a\nb', email: 'a@b.com' }));

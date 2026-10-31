@@ -274,3 +274,29 @@ test('resposta do add-on com {"members"}/{"elements"} (Gson de outro classloader
   const r = await processar(servico('LoopPortalAppSP.consultarConfig', {}), deps);
   assert.deepEqual((r.corpo as { responseBody: unknown }).responseBody, { success: true, data: { codCfg: 1, banners: [{ id: 7 }], nada: null } });
 });
+
+test('e-mail não confirmado: barra por padrão; libera só se o cliente desligou no add-on', async () => {
+  const naoConfirmado = {
+    async validar(token: string) {
+      if (token !== TOKEN_OK) throw new ErroGateway(401, 'TOKEN_INVALIDO', 'Sessão expirada. Entre novamente.');
+      return { origem: 'FIREBASE' as const, uid: 'uidTeste123', email: 'ana@loop.com.br', emailVerificado: false };
+    },
+  };
+  const req = servico('LoopPortalAppSP.meuUsuario', {}, `Bearer ${TOKEN_OK}`);
+
+  const padrao = montar({ validador: naoConfirmado });
+  assert.equal((await processar(req, padrao.deps)).status, 403);
+  assert.equal(padrao.chamadas.length, 0);
+
+  const exige = montar({ validador: naoConfirmado, exigeEmailConfirmado: async () => true });
+  assert.equal((await processar(req, exige.deps)).status, 403);
+
+  const consultados: string[] = [];
+  const liberado = montar({ validador: naoConfirmado, exigeEmailConfirmado: async (cnpj) => (consultados.push(cnpj), false) });
+  assert.equal((await processar(req, liberado.deps)).status, 200);
+  assert.deepEqual(consultados, [LICENCAS['LIC-A']]);
+
+  // e-mail confirmado nem consulta a configuração
+  const confirmado = montar({ exigeEmailConfirmado: async () => { throw new Error('não deveria consultar'); } });
+  assert.equal((await processar(req, confirmado.deps)).status, 200);
+});

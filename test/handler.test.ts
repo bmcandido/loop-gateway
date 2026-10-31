@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { validadorCombinado } from '../src/auth/combinado.ts';
-import { criarHandler, rota } from '../src/http/handler.ts';
+import { criarHandler, exigenciaDeEmailPorCliente, rota } from '../src/http/handler.ts';
 import { ErroGateway, type ModuloSankhya } from '../src/core/tipos.ts';
 import { GATEWAY_TESTE, LICENCA_TESTE, licencaDe } from './fixtures.ts';
 
@@ -82,4 +82,26 @@ test('login combinado: emissor Firebase só com projeto legado configurado; rest
   await com.validar(jwt('https://securetoken.google.com/portal-financeiro-c18b7'));
   await com.validar('lixo');
   assert.deepEqual(usados, ['supabase', 'firebase', 'supabase']);
+});
+
+test('exigência de e-mail por cliente: lê EXIGECONFEMAIL do add-on, com cache e padrão seguro', async () => {
+  let chamadas = 0;
+  let resposta: unknown = { status: '1', responseBody: { data: { members: { exigeConfEmail: 'N' } } } };
+  let agora = 0;
+  const exige = exigenciaDeEmailPorCliente(() => ({
+    async chamar(serviceName: string) {
+      chamadas++;
+      assert.equal(serviceName, 'LoopPortalAppSP.consultarConfig');
+      if (resposta instanceof Error) throw resposta;
+      return resposta as any;
+    },
+  }), () => agora);
+  assert.equal(await exige('1'), false);
+  assert.equal(await exige('1'), false);
+  assert.equal(chamadas, 1, 'cache de 5 min');
+  agora = 6 * 60 * 1000;
+  resposta = { status: '1', responseBody: { data: { exigeConfEmail: 'S' } } };
+  assert.equal(await exige('1'), true);
+  resposta = new Error('ERP fora');
+  assert.equal(await exige('2'), true, 'falha = exige');
 });
