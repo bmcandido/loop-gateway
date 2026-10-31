@@ -12,8 +12,11 @@ export interface RegraServico {
   modulo: ModuloSankhya;
 }
 
-const usuario = (modulo: ModuloSankhya = 'mge'): RegraServico => ({ acesso: 'USUARIO', modulo });
-const publico: RegraServico = { acesso: 'PUBLICO', modulo: 'mge' };
+/** Contexto do Add-on do Portal (rootProject.name de loopPortal-sankhya-addon/settings.gradle). */
+export const CONTEXTO_ADDON: ModuloSankhya = 'loop-portal';
+
+const usuario = (modulo: ModuloSankhya = CONTEXTO_ADDON): RegraServico => ({ acesso: 'USUARIO', modulo });
+const publico: RegraServico = { acesso: 'PUBLICO', modulo: CONTEXTO_ADDON };
 
 /**
  * Lista FECHADA do que o app pode chamar. Tudo fora daqui é recusado,

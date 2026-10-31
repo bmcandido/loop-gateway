@@ -173,7 +173,7 @@ test('documentos: nativos do Sankhya fora; serviço do Add-on recebe a identidad
     deps,
   );
   assert.equal(r.status, 200);
-  assert.equal(chamadas[0].modulo, 'mge');
+  assert.equal(chamadas[0].modulo, 'loop-portal', 'serviço de add-on vai no contexto do add-on');
   assert.ok(chamadas[0].body._portalAuth, 'identidade assinada');
 });
 
