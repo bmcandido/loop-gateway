@@ -44,7 +44,7 @@ function supabase(tabelas: Tabelas, op: { rpc?: boolean } = {}) {
 
 const ATIVO: Tabelas = {
   clientes: [{ cpfCnpj: CNPJ, dataExpiracao: '2027-01-31' }],
-  clientesProdutos: [{ cpfCnpj: CNPJ, codigoProduto: 'LoopFinanceiro' }],
+  clientesProdutos: [{ cpfCnpj: CNPJ, codigoProduto: 'LoopPortal' }],
 };
 
 function montar(tabelas: Tabelas, op: { rpc?: boolean } = {}) {

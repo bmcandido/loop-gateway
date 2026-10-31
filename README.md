@@ -24,7 +24,7 @@ App ──(token de login)──▶ Gateway ──(sessão técnica + _portalAut
   tempo e o uid do provedor.
 - Licença (`src/core/licenca.ts`): antes de qualquer serviço, confere no
   Supabase `clientes.dataExpiracao` (vence no início do dia, horário de
-  Brasília) e o produto `PORTAL_PRODUTO` (padrão `LoopFinanceiro`) em
+  Brasília) e o produto `PORTAL_PRODUTO` (padrão `LoopPortal`) em
   `clientesProdutos`. Recusa com `LICENCA_INATIVA` ou `LICENCA_EXPIRADA`
   (403). Supabase fora: vale o último OK por até 10 dias; sem ele,
   `LICENCA_INDISPONIVEL` (503). É a mesma regra do app, que também confere o

@@ -20,7 +20,7 @@ const ORIGENS_WEB = defineString('PORTAL_ORIGENS_WEB', { default: '' });
 /** Só desligar em teste controlado: sem isso, conta com e-mail alheio acessa os dados do dono. */
 const EXIGE_EMAIL_VERIFICADO = defineBoolean('PORTAL_EXIGE_EMAIL_VERIFICADO', { default: true });
 /** codigoProduto do portal em `clientesProdutos` (o mesmo que o app confere). */
-const PRODUTO = defineString('PORTAL_PRODUTO', { default: 'LoopFinanceiro' });
+const PRODUTO = defineString('PORTAL_PRODUTO', { default: 'LoopPortal' });
 
 let sankhya: SankhyaCliente | undefined;
 let licenca: VerificadorLicenca | undefined;

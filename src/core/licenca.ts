@@ -18,7 +18,7 @@ export interface OpcoesLicenca {
   chave: string;
   /** CNPJ do cliente (linha de `clientes`). */
   cnpj: string;
-  /** codigoProduto em `clientesProdutos`. O portal usa LoopFinanceiro. */
+  /** codigoProduto em `clientesProdutos`. O portal é LoopPortal. */
   produto?: string;
   http?: typeof fetch;
   agoraMs?: () => number;
@@ -35,7 +35,7 @@ export function licencaDoSupabase(op: OpcoesLicenca): VerificadorLicenca {
   const cnpj = op.cnpj.replace(/\D/g, '');
   if (cnpj.length !== 14) throw new Error('PORTAL_CNPJ inválido.');
   if (!op.url || !op.chave) throw new Error('Supabase do gateway não configurado.');
-  const produto = op.produto || 'LoopFinanceiro';
+  const produto = op.produto || 'LoopPortal';
   const base = `${op.url.replace(/\/+$/, '')}/rest/v1`;
   const http = op.http ?? fetch;
   const agora = op.agoraMs ?? Date.now;
