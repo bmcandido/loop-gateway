@@ -264,3 +264,13 @@ test('licença inativa: nenhum serviço chega ao Sankhya, nem os públicos', asy
   // saúde continua respondendo para monitoramento
   assert.equal((await processar({ metodo: 'GET', caminho: '/saude', corpo: null }, deps)).status, 200);
 });
+
+test('resposta do add-on com {"members"}/{"elements"} (Gson de outro classloader) chega normal ao app', async () => {
+  const { deps, porta } = montar();
+  porta.chamar = async () => ({
+    status: '1',
+    responseBody: { success: true, data: { members: { codCfg: 1, banners: { elements: [{ members: { id: 7 } }] }, nada: null } } },
+  });
+  const r = await processar(servico('LoopPortalAppSP.consultarConfig', {}), deps);
+  assert.deepEqual((r.corpo as { responseBody: unknown }).responseBody, { success: true, data: { codCfg: 1, banners: [{ id: 7 }], nada: null } });
+});
