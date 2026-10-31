@@ -1,5 +1,9 @@
 # Gateway ÚNICO do Portal do Cliente
 
+> **Plataforma: Supabase Edge Function `portal-gateway`** (projeto `zvncvdlfyeyktnuzxvlc`).
+> Login padrão: Supabase Auth. Firebase é só legado (cliente Pentágono, aceito via
+> `PORTAL_FIREBASE_PROJETOS`); `src/firebase/index.ts` fica sem deploy.
+
 > Arquitetura completa, chaves e modelo para os outros apps:
 > `loop-central/loop-admin/docs/licenciamento/` (README, 01 a 06).
 
@@ -54,7 +58,20 @@ Erros saem no envelope do Sankhya: `{status: "0", statusMessage, codigoGateway}`
 
 ## Implantação (versão de teste primeiro)
 
-**Uma vez só** (não existe passo por cliente):
+**Uma vez só** (não existe passo por cliente). Comandos completos em
+`loop-admin/docs/licenciamento/04-OPERACAO.md`. Resumo (Supabase):
+
+```
+npx supabase login
+npx supabase secrets set --project-ref zvncvdlfyeyktnuzxvlc PORTAL_GATEWAY_KID=loop-gateway-2026-11 PORTAL_FIREBASE_PROJETOS=portal-financeiro-c18b7
+npx supabase secrets set --project-ref zvncvdlfyeyktnuzxvlc PORTAL_GATEWAY_CHAVE_PRIVADA="$(Get-Content <arquivo.pem> -Raw)"
+npm run deploy
+```
+
+URL: `https://zvncvdlfyeyktnuzxvlc.supabase.co/functions/v1/portal-gateway`.
+`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` vêm da plataforma.
+
+Legado (Firebase), só se necessário:
 
 1. **Chave do gateway**: gerada no Loop Mais com
    `node scripts/gerar-chave-gateway.js <arquivo.pem> loop-gateway-AAAA-MM`

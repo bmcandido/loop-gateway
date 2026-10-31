@@ -10,8 +10,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test \"lib/test/**/*.test.js\"",
-    "deploy": "npm run build && firebase deploy --only functions:gateway",
-    "logs": "firebase functions:log --only portalGateway"
+    "deploy": "npm test && npx supabase functions deploy portal-gateway --project-ref zvncvdlfyeyktnuzxvlc --no-verify-jwt",
+    "deploy:firebase-legado": "npm run build && firebase deploy --only functions:gateway"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",

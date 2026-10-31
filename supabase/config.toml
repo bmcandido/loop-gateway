@@ -1,0 +1,6 @@
+# Só o necessário para publicar o gateway único como Edge Function.
+project_id = "zvncvdlfyeyktnuzxvlc"
+
+[functions.portal-gateway]
+verify_jwt = false
+import_map = "./functions/portal-gateway/deno.json"
