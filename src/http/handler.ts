@@ -1,3 +1,4 @@
+import { jwsDoDominioNoSupabase } from '../core/icone.ts';
 import { validadorCombinado } from '../auth/combinado.ts';
 import { validadorFirebase } from '../auth/firebase.ts';
 import { validadorSupabase } from '../auth/supabase.ts';
@@ -51,6 +52,7 @@ export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Resp
   const exigeEmailConfirmado = cfg.exigirEmailVerificado === false
     ? async () => false
     : exigenciaDeEmailPorCliente((cnpj) => sankhya(cnpj));
+  const jwsDoDominio = jwsDoDominioNoSupabase(supabase);
   const origens = (cfg.origensWeb ?? []).filter(Boolean);
   let assinar: Promise<AssinadorIdentidade> | undefined;
 
@@ -104,6 +106,7 @@ export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Resp
       {
         validador,
         licencaDoApp,
+        jwsDoDominio,
         licenca: (cnpj) => licenca(cnpj)(),
         sankhya,
         assinar: assinador,
