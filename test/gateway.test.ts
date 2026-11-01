@@ -152,6 +152,25 @@ test('visitante em serviço público perde o codUsuPortal', async () => {
   assert.deepEqual(chamadas[0].body, { codCfg: 1, tela: 'LOGIN' });
 });
 
+test('painel, contagem e foto exigem login e recebem a identidade assinada', async () => {
+  for (const s of [
+    'LoopPortalFinanceiroSP.consultarPainel',
+    'LoopPortalFinanceiroSP.contarTitulos',
+    'LoopPortalAppSP.minhaFoto',
+    'LoopPortalAppSP.salvarFoto',
+    'LoopPortalAppSP.removerFoto',
+  ]) {
+    const { deps, chamadas } = montar();
+    const sem = await processar(servico(s, { codCfg: 1 }), deps);
+    assert.equal(sem.status, 401, s);
+    assert.equal(chamadas.length, 0, s);
+
+    const r = await processar(servico(s, { codCfg: 1 }, `Bearer ${TOKEN_OK}`), deps);
+    assert.equal(r.status, 200, s);
+    assert.ok((chamadas[0].body as Record<string, unknown>)._portalAuth, s);
+  }
+});
+
 test('documentos: nativos do Sankhya fora; serviço do Add-on recebe a identidade', async () => {
   const { deps, chamadas } = montar();
   for (const s of [

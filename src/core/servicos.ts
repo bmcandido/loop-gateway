@@ -35,6 +35,10 @@ export const SERVICOS: Readonly<Record<string, RegraServico>> = Object.freeze({
   // Cliente logado (antes era SQL livre no app)
   'LoopPortalAppSP.meuUsuario': usuario(),
   'LoopPortalAppSP.consultarAvisos': usuario(),
+  // Foto do próprio usuário: o Add-on usa a identidade assinada, não o corpo.
+  'LoopPortalAppSP.minhaFoto': usuario(),
+  'LoopPortalAppSP.salvarFoto': usuario(),
+  'LoopPortalAppSP.removerFoto': usuario(),
 
   // Atividade do app
   'LoopPortalAtividadeSP.iniciarSessao': usuario(),
@@ -45,6 +49,8 @@ export const SERVICOS: Readonly<Record<string, RegraServico>> = Object.freeze({
   'LoopPortalContratoSP.consultarContratos': usuario(),
   'LoopPortalContratoSP.consultarAnexos': usuario(),
   'LoopPortalContratoSP.obterAnexo': usuario(),
+  'LoopPortalFinanceiroSP.consultarPainel': usuario(),
+  'LoopPortalFinanceiroSP.contarTitulos': usuario(),
   'LoopPortalFinanceiroSP.consultarTitulos': usuario(),
   'LoopPortalFinanceiroSP.consultarDetalhamentos': usuario(),
 

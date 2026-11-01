@@ -108,7 +108,7 @@ novo) e não assinadas (app antigo) até o corte.
 flutter build web --dart-define=PORTAL_GATEWAY_URL=https://southamerica-east1-<projeto>.cloudfunctions.net/portalGateway
 ```
 
-- O app envia o JWS do `licenca.json` em `X-Loop-Licenca` (`GatewayPortal.licenca`,
+- O app envia o JWS da licença (buscada pelo domínio, gerada pelo Loop Mais) em `X-Loop-Licenca` (`GatewayPortal.licenca`,
   definido no `main.dart`). Sem licença válida o gateway responde
   `LICENCA_AUSENTE`/`LICENCA_INVALIDA`.
 - CORS: qualquer origem por padrão (não há cookie). `PORTAL_ORIGENS_WEB` é
