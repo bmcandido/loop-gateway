@@ -128,12 +128,13 @@ async function publico(
   const cnpj = (req.cnpj ?? '').replace(/\D/g, '');
   if (!cnpjValido(cnpj)) throw new ErroGateway(400, 'EMPRESA_INVALIDA', 'Selecione a empresa.');
   evento.cnpj = cnpj;
-  if (deps.permitirEmpresa && !deps.permitirEmpresa(cnpj)) {
-    throw new ErroGateway(429, 'MUITAS_TENTATIVAS', 'Muitas tentativas. Aguarde um minuto e tente de novo.');
-  }
   let habilitado = false;
   try {
     await (deps.licencaPublica ?? deps.licenca)(cnpj);
+    // Depois da licença: CNPJ inventado não ocupa o limitador.
+    if (deps.permitirEmpresa && !deps.permitirEmpresa(cnpj)) {
+      throw new ErroGateway(429, 'MUITAS_TENTATIVAS', 'Muitas tentativas. Aguarde um minuto e tente de novo.');
+    }
     const envelope = desembrulhar(await deps.sankhya(cnpj).chamar(serviceName, MODULO_EXPENSE, body)) as Record<string, any>;
     const resposta = envelope?.responseBody;
     if (envelope?.status?.toString() !== '1' || resposta?.success !== true) {
@@ -141,6 +142,7 @@ async function publico(
     }
     habilitado = resposta.data?.habilitado === true;
   } catch (e) {
+    if (e instanceof ErroGateway && e.codigo === 'MUITAS_TENTATIVAS') throw e;
     evento.codigo = e instanceof ErroGateway ? e.codigo : 'ERRO_INTERNO';
     throw new ErroGateway(502, 'CADASTRO_INDISPONIVEL', PUBLICO_INDISPONIVEL);
   }
@@ -170,9 +172,9 @@ export function limitadorPublico(limite = PUBLICO_LIMITE, janelaMs = PUBLICO_JAN
     const e = mapa.get(origem);
     if (!e || t >= e.ate) {
       if (mapa.size >= 5000) {
-        // Encher o mapa não pode zerar quem está no limite: saem só as janelas vencidas.
+        // Encher o mapa não pode zerar todos nem recusar todos: saem as vencidas e, se faltar, a mais antiga.
         for (const [k, v] of mapa) if (t >= v.ate) mapa.delete(k);
-        if (mapa.size >= 5000) return false;
+        if (mapa.size >= 5000) mapa.delete(mapa.keys().next().value as string);
       }
       mapa.set(origem, { ate: t + janelaMs, n: 1 });
       return true;
