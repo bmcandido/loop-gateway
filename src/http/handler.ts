@@ -1,7 +1,7 @@
 import { jwsDoDominioNoSupabase } from '../core/icone.ts';
 import { validadorCombinado } from '../auth/combinado.ts';
 import { validadorFirebase } from '../auth/firebase.ts';
-import { validadorSupabase } from '../auth/supabase.ts';
+import { validadorPeloAuth } from '../auth/supabase-auth.ts';
 import { assinadorV2, chavePrivadaGateway, type AssinadorIdentidade } from '../core/assinatura.ts';
 import { credenciaisDoSupabase } from '../core/credenciais.ts';
 import { type DependenciasGateway, desembrulhar, processar } from '../core/gateway.ts';
@@ -47,7 +47,7 @@ export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Resp
   const projetos = (cfg.projetosFirebase ?? []).filter(Boolean);
   // A confirmação de e-mail é decidida por cliente em processar(), com a configuração do Add-on.
   const validador: ValidadorToken = validadorCombinado(
-    validadorSupabase(cfg.supabaseUrl),
+    validadorPeloAuth({ url: cfg.supabaseUrl, chave: cfg.supabaseChave }),
     projetos.length ? validadorFirebase(projetos, { exigirEmailVerificado: false }) : undefined,
   );
   // PORTAL_EXIGE_EMAIL_VERIFICADO=false desliga para todos; senão vale a chave de cada cliente.
