@@ -1,4 +1,4 @@
-import { jwsDoDominioNoSupabase } from '../core/icone.ts';
+import { codEmpDoClienteNoSupabase, jwsDoDominioNoSupabase } from '../core/icone.ts';
 import { validadorCombinado } from '../auth/combinado.ts';
 import { validadorFirebase } from '../auth/firebase.ts';
 import { validadorPeloAuth } from '../auth/supabase-auth.ts';
@@ -57,6 +57,7 @@ export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Resp
     : exigenciaDoPortal(exigenciaDeEmailPorCliente((cnpj) => sankhya(cnpj)));
   const vendedorAtivo = vendedorPorEmail((cnpj) => sankhya(cnpj));
   const jwsDoDominio = jwsDoDominioNoSupabase(supabase);
+  const codEmpDoCliente = codEmpDoClienteNoSupabase(supabase);
   const origens = (cfg.origensWeb ?? []).filter(Boolean);
   let assinar: Promise<AssinadorIdentidade> | undefined;
 
@@ -111,6 +112,7 @@ export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Resp
         validador,
         licencaDoApp,
         jwsDoDominio,
+        codEmpDoCliente,
         licenca: (cnpj, produto = 'LoopPortal') => licenca(`${cnpj}|${produto}`)(),
         sankhya,
         assinar: assinador,

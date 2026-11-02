@@ -31,6 +31,8 @@ export interface DependenciasGateway {
   exigeEmailConfirmado?: (cnpj: string, produto?: ProdutoGateway) => Promise<boolean>;
   /** O e-mail é de um vendedor ativo no Sankhya do cliente? */
   vendedorAtivo?: (cnpj: string, email: string) => Promise<boolean>;
+  /** Empresa principal do cliente (rota /icone/ecommerce). */
+  codEmpDoCliente?: (cnpj: string) => Promise<number | null>;
   /** JWS da licença do domínio do site (rota /icone). */
   jwsDoDominio?: (dominio: string) => Promise<string | null>;
   agoraSeg?: () => number;
@@ -73,8 +75,9 @@ async function rotear(req: Requisicao, deps: DependenciasGateway, evento: Evento
     throw new ErroGateway(405, 'METODO', 'Método não permitido.');
   }
   if (req.caminho === '/servico') return servico(req, deps, evento);
-  if (req.caminho === '/icone') {
-    const { cnpj, ...resposta } = await iconeDoDominio(req.corpo, deps);
+  if (req.caminho === '/icone' || req.caminho === '/icone/ecommerce') {
+    const produto = req.caminho === '/icone' ? 'LoopPortal' : 'LoopEcommerce';
+    const { cnpj, ...resposta } = await iconeDoDominio(req.corpo, deps, produto);
     evento.cnpj = cnpj;
     return resposta;
   }

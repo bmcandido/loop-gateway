@@ -1,5 +1,5 @@
 import { desembrulhar } from './desembrulhar.ts';
-import { regraDoServico } from './servicos.ts';
+import { type ProdutoGateway, regraDoServico } from './servicos.ts';
 import { ErroGateway, type PortaSankhya, type RespostaGateway } from './tipos.ts';
 
 const DOMINIO = /^(?=.{1,253}$)[a-z0-9-]+(\.[a-z0-9-]+)+$/;
@@ -32,11 +32,27 @@ export function jwsDoDominioNoSupabase(op: OpcoesDominio): (dominio: string) => 
   };
 }
 
+/** Empresa principal do cliente (clientes.codEmpresaCadastroPrinciapal); null se não houver. */
+export function codEmpDoClienteNoSupabase(op: OpcoesDominio): (cnpj: string) => Promise<number | null> {
+  const http = op.http ?? fetch;
+  const headers: Record<string, string> = { apikey: op.chave, Accept: 'application/json' };
+  if (!op.chave.startsWith('sb_')) headers.Authorization = `Bearer ${op.chave}`;
+  return async (cnpj) => {
+    const qs = new URLSearchParams({ select: 'codEmpresaCadastroPrinciapal', cpfCnpj: `eq.${cnpj}`, limit: '1' });
+    const r = await http(`${op.url.replace(/\/+$/, '')}/rest/v1/clientes?${qs}`, { headers, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const linhas = (await r.json()) as { codEmpresaCadastroPrinciapal?: unknown }[];
+    const codEmp = Number(linhas?.[0]?.codEmpresaCadastroPrinciapal);
+    return Number.isInteger(codEmp) && codEmp > 0 ? codEmp : null;
+  };
+}
+
 export interface DependenciasIcone {
   jwsDoDominio?: (dominio: string) => Promise<string | null>;
-  licencaDoApp: (jws: string | null | undefined) => Promise<{ cnpj: string }>;
-  licenca: (cnpj: string) => Promise<void>;
+  licencaDoApp: (jws: string | null | undefined, produto?: ProdutoGateway) => Promise<{ cnpj: string }>;
+  licenca: (cnpj: string, produto?: ProdutoGateway) => Promise<void>;
   sankhya: (cnpj: string) => PortaSankhya;
+  codEmpDoCliente?: (cnpj: string) => Promise<number | null>;
 }
 
 /**
@@ -44,7 +60,11 @@ export interface DependenciasIcone {
  * Rota pública: devolve só a imagem, que o site já mostra a qualquer visitante, e o cliente
  * vem da licença do domínio, nunca do corpo. Mesma ordem do app: favicon, logo reduzida, logo.
  */
-export async function iconeDoDominio(corpo: unknown, deps: DependenciasIcone): Promise<RespostaGateway & { cnpj?: string }> {
+export async function iconeDoDominio(
+  corpo: unknown,
+  deps: DependenciasIcone,
+  produto: ProdutoGateway = 'LoopPortal',
+): Promise<RespostaGateway & { cnpj?: string }> {
   const bruto = corpo && typeof corpo === 'object' ? (corpo as Record<string, unknown>).dominio : undefined;
   const dominio = typeof bruto === 'string' ? bruto.trim().toLowerCase() : '';
   if (!DOMINIO.test(dominio)) {
@@ -54,8 +74,8 @@ export async function iconeDoDominio(corpo: unknown, deps: DependenciasIcone): P
   if (!jws) {
     throw new ErroGateway(404, 'DOMINIO_SEM_LICENCA', 'Este domínio não tem licença no Loop Mais.');
   }
-  const { cnpj } = await deps.licencaDoApp(jws);
-  await deps.licenca(cnpj);
+  const { cnpj } = await deps.licencaDoApp(jws, produto);
+  await deps.licenca(cnpj, produto);
 
   const porta = deps.sankhya(cnpj);
   const dados = async (servico: string, body: Record<string, unknown>) => {
@@ -63,6 +83,15 @@ export async function iconeDoDominio(corpo: unknown, deps: DependenciasIcone): P
     const resposta = envelope?.responseBody;
     return resposta?.success === true && resposta.data && typeof resposta.data === 'object' ? resposta.data : null;
   };
+
+  if (produto === 'LoopEcommerce') {
+    // Logo da loja (LOOPB2BB2CCONFIG), da empresa principal do cliente.
+    const codEmp = await deps.codEmpDoCliente?.(cnpj);
+    if (!codEmp) return { status: 200, corpo: { imagem: null }, cnpj };
+    const loja = await dados('LoopEcommerceConfigSP.doLojaPublica', { codEmp });
+    const logo = loja?.logo;
+    return { status: 200, corpo: { imagem: typeof logo === 'string' && IMAGEM.test(logo) ? logo : null }, cnpj };
+  }
 
   const config = await dados('LoopPortalAppSP.consultarConfig', {});
   const codCfg = Number(config?.codCfg);
