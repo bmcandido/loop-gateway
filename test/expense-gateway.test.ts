@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ErroGateway, type ModuloSankhya, type PortaSankhya } from '../src/core/tipos.ts';
-import { cnpjDoUsuarioNoSupabase, cnpjValido, criarHandlerExpense, type DependenciasExpense, limitadorPublico, origemDe, processarExpense, rotaExpense } from '../src/expense/gateway.ts';
+import { cnpjDoUsuarioNoSupabase, cnpjValido, criarHandlerExpense, type DependenciasExpense, limitadorPublico, origemDe, processarExpense, rotaExpense, validadorPeloAuth } from '../src/expense/gateway.ts';
 
 const TOKEN = 'token-valido-do-supabase-1234567890';
 const CNPJ = '36841880000176';
@@ -191,6 +191,45 @@ test('rota, saúde e CORS', async () => {
   }));
   assert.equal(r.status, 200);
   assert.equal(((await r.json()) as Record<string, unknown>).status, '1');
+});
+
+test('login conferido no Supabase Auth: aceita, guarda por pouco tempo e recusa o resto', async () => {
+  const pedidos: { auth: string; apikey: string }[] = [];
+  let resposta: { status: number; corpo: unknown } = {
+    status: 200,
+    corpo: { id: 'uid-1', email: 'Ana@Loop.com', email_confirmed_at: '2026-11-01T00:00:00Z' },
+  };
+  const http = (async (_u: string | URL | Request, init?: RequestInit) => {
+    const h = (init?.headers ?? {}) as Record<string, string>;
+    pedidos.push({ auth: h.Authorization, apikey: h.apikey });
+    return new Response(JSON.stringify(resposta.corpo), { status: resposta.status });
+  }) as typeof fetch;
+  let t = 0;
+  const v = validadorPeloAuth({ url: 'https://x.supabase.co/', chave: 'chave', http, agora: () => t });
+  assert.deepEqual(await v.validar('tok-1'), { origem: 'SUPABASE', uid: 'uid-1', email: 'ana@loop.com' });
+  assert.deepEqual(pedidos[0], { auth: 'Bearer tok-1', apikey: 'chave' });
+  await v.validar('tok-1');
+  assert.equal(pedidos.length, 1);
+  t = 61_000;
+  await v.validar('tok-1');
+  assert.equal(pedidos.length, 2);
+
+  const codigo = async (token: string) => {
+    try {
+      await v.validar(token);
+      return 'aceito';
+    } catch (e) {
+      return (e as ErroGateway).codigo;
+    }
+  };
+  resposta = { status: 401, corpo: {} };
+  assert.equal(await codigo('tok-2'), 'TOKEN_INVALIDO');
+  resposta = { status: 500, corpo: {} };
+  assert.equal(await codigo('tok-3'), 'SUPABASE_INDISPONIVEL');
+  resposta = { status: 200, corpo: { id: 'uid-1', email: 'a@b.com', email_confirmed_at: null } };
+  assert.equal(await codigo('tok-4'), 'EMAIL_NAO_VERIFICADO');
+  resposta = { status: 200, corpo: { id: 'uid-1', email_confirmed_at: 'x' } };
+  assert.equal(await codigo('tok-5'), 'TOKEN_SEM_EMAIL');
 });
 
 test('empresa da conta: lê pelo id, guarda em cache e não aceita linha vazia', async () => {
