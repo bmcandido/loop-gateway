@@ -66,8 +66,8 @@ function comVendedor(ativo: boolean | null) {
   m.deps.vendedorAtivo = ativo === null ? undefined : async () => ativo;
   return m;
 }
-const logado = (serviceName: string, deps: DependenciasGateway) =>
-  processar({ metodo: 'POST', caminho: '/servico', licenca: 'JWS', authorization: `Bearer ${'x'.repeat(30)}`, corpo: { serviceName, requestBody: {} } }, deps);
+const logado = (serviceName: string, deps: DependenciasGateway, requestBody: Record<string, unknown> = {}) =>
+  processar({ metodo: 'POST', caminho: '/servico', licenca: 'JWS', authorization: `Bearer ${'x'.repeat(30)}`, corpo: { serviceName, requestBody } }, deps);
 
 test('sem login nada da força de vendas passa', async () => {
   const { deps, chamadas } = montar(['LoopEcommerce']);
@@ -87,7 +87,7 @@ test('login sem vínculo de vendedor é recusado, e o vendedor entra no contexto
 
   const dentro = comVendedor(true);
   assert.equal((await logado(NATIVO, dentro.deps)).status, 200);
-  assert.equal((await logado('DbExplorerSP.executeQuery', dentro.deps)).status, 200);
+  assert.equal((await logado('DbExplorerSP.executeQuery', dentro.deps, { sql: 'SELECT 1 FROM DUAL' })).status, 200);
   assert.deepEqual(dentro.chamadas, [
     { servico: NATIVO, modulo: 'mgecom' },
     { servico: 'DbExplorerSP.executeQuery', modulo: 'mge' },
@@ -111,6 +111,12 @@ test('segredos, telas administrativas e serviços desconhecidos ficam fora até 
     'LoopEcommerceEmailSP.testarSmtp',
     'LoopEcommerceRelatoriosSP.doExcluir',
     'LoopEcommerceProdutosSP.doSalvar',
+    'BaixaFinanceiroSP.baixarTitulo',
+    'AdiantamentoEmprestimoSP.gerarAdiantamentoEmprestimo',
+    'CACSP.excluirNotas',
+    'CACSP.cancelarNota',
+    'CRUDServiceProvider.loadRecords',
+    'CRUDServiceProvider.loadView',
   ]) {
     assert.equal((await logado(s, deps)).status, 403, s);
   }
@@ -161,4 +167,23 @@ test('verificador real: confere o JWS contra o produto do serviço', async () =>
   assert.deepEqual(await verificar(ecommerce, 'LoopEcommerce'), { cnpj: CNPJ });
   await assert.rejects(verificar(ecommerce, 'LoopPortal'), (e: ErroGateway) => e.codigo === 'LICENCA_INATIVA');
   await assert.rejects(verificar(ecommerce), (e: ErroGateway) => e.codigo === 'LICENCA_INATIVA');
+});
+
+test('SQL recusado e gravação fora das entidades do app não chegam ao Sankhya', async () => {
+  const { deps, chamadas } = comVendedor(true);
+  const eventos: { codigo?: string; detalhe?: string }[] = [];
+  deps.registrar = (ev) => eventos.push(ev);
+  const r = await logado('DbExplorerSP.executeQuery', deps, { sql: 'SELECT SMTPPASS FROM LOOPB2BB2CCONFIG' });
+  assert.equal(r.status, 403);
+  assert.equal(eventos[0].codigo, 'CONSULTA_RECUSADA');
+  assert.equal(eventos[0].detalhe, 'coluna SMTPPASS');
+  assert.equal((await logado('DatasetSP.save', deps, { entityName: 'TSIUSU' })).status, 403);
+  assert.equal((await logado('DatasetSP.removeRecord', deps, { entityName: 'CabecalhoNota' })).status, 403);
+  assert.equal((await logado('CRUDServiceProvider.saveRecord', deps, { dataSet: { rootEntity: 'TGFPAR' } })).status, 403);
+  assert.equal(chamadas.length, 0);
+
+  assert.equal((await logado('DatasetSP.save', deps, { entityName: 'CabecalhoNota' })).status, 200);
+  assert.equal((await logado('DatasetSP.removeRecord', deps, { entityName: 'LOOPB2BB2CVISITA' })).status, 200);
+  assert.equal((await logado('CRUDServiceProvider.saveRecord', deps, { dataSet: { rootEntity: 'LOOPB2BB2CVISITA' } })).status, 200);
+  assert.equal(chamadas.length, 3);
 });

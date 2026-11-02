@@ -114,6 +114,12 @@ async function servico(req: Requisicao, deps: DependenciasGateway, evento: Event
     throw new ErroGateway(403, 'SEM_VINCULO_VENDEDOR', 'Usuário sem vínculo de vendedor.');
   }
 
+  const recusa = regra.conferir?.(requestBody);
+  if (recusa) {
+    evento.detalhe = recusa;
+    throw new ErroGateway(403, 'CONSULTA_RECUSADA', 'Operação não permitida.');
+  }
+
   const body: Record<string, unknown> = { ...requestBody };
   for (const c of CAMPOS_RESERVADOS) delete body[c];
 

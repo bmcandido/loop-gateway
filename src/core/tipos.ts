@@ -59,6 +59,8 @@ export interface EventoGateway {
   /** CNPJ da empresa cliente (da licença); não é dado pessoal. */
   cnpj?: string;
   codigo?: string;
+  /** Motivo da recusa, sem dados da requisição. */
+  detalhe?: string;
 }
 
 export class ErroGateway extends Error {

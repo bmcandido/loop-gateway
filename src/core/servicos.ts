@@ -1,3 +1,4 @@
+import { motivoRecusaSql } from './filtro-sql.ts';
 import type { ModuloSankhya } from './tipos.ts';
 
 /**
@@ -18,6 +19,8 @@ export interface RegraServico {
   produto: ProdutoGateway;
   /** Campos retirados da resposta antes de voltar ao app. */
   ocultar?: readonly string[];
+  /** Confere o corpo antes de chamar o Sankhya: devolve o motivo da recusa ou null. */
+  conferir?: (corpo: Record<string, unknown>) => string | null;
 }
 
 /** Contexto do Add-on do Portal (rootProject.name de loopPortal-sankhya-addon/settings.gradle). */
@@ -111,33 +114,41 @@ export const SERVICOS: Readonly<Record<string, RegraServico>> = Object.freeze({
   'LoopPortalDocumentoSP.relatorios': usuario(),
 });
 
-const vendedor = (modulo: ModuloSankhya, ocultar?: readonly string[]): RegraServico => ({
+const vendedor = (modulo: ModuloSankhya, ocultar?: readonly string[], conferir?: RegraServico['conferir']): RegraServico => ({
   acesso: 'VENDEDOR',
   modulo,
   produto: 'LoopEcommerce',
   ...(ocultar ? { ocultar } : {}),
+  ...(conferir ? { conferir } : {}),
 });
 
-/** Serviços nativos do Sankhya usados pela força de vendas, cada um no contexto em que responde. */
+/** Gravações genéricas: só nas entidades que o app grava. */
+const so = (entidades: readonly string[], ler: (corpo: Record<string, unknown>) => unknown) => (corpo: Record<string, unknown>) => {
+  const entidade = ler(corpo);
+  return typeof entidade === 'string' && entidades.includes(entidade) ? null : `entidade ${String(entidade)}`;
+};
+const entidadeDoDataset = (corpo: Record<string, unknown>) => corpo.entityName;
+const entidadeDoCrud = (corpo: Record<string, unknown>) => (corpo.dataSet as { rootEntity?: unknown } | undefined)?.rootEntity;
+
+/** Serviços genéricos, com o corpo conferido: SQL filtrado e gravação só onde o app grava. */
+const GENERICOS_VENDEDOR: Readonly<Record<string, RegraServico>> = Object.freeze({
+  'DbExplorerSP.executeQuery': vendedor('mge', undefined, (corpo) => motivoRecusaSql(corpo.sql)),
+  'CRUDServiceProvider.saveRecord': vendedor('mge', undefined, so(['LOOPPAYMENTLINK', 'LOOPB2BB2CVISITA', 'LOOPDELIVERYERRORLOG'], entidadeDoCrud)),
+  'DatasetSP.save': vendedor('mge', undefined, so(['CabecalhoNota'], entidadeDoDataset)),
+  'DatasetSP.removeRecord': vendedor('mge', undefined, so(['LOOPB2BB2CVISITA'], entidadeDoDataset)),
+});
+
+/**
+ * Serviços nativos do Sankhya usados pela força de vendas, cada um no contexto em que responde.
+ * Baixa de título, adiantamento e exclusão ou cancelamento de nota ficam fora: o app não os chama.
+ */
 const NATIVOS_VENDEDOR: Readonly<Record<string, ModuloSankhya>> = Object.freeze({
-  'DbExplorerSP.executeQuery': 'mge',
-  'CRUDServiceProvider.loadRecords': 'mge',
-  'CRUDServiceProvider.loadView': 'mge',
-  'CRUDServiceProvider.saveRecord': 'mge',
-  'DatasetSP.save': 'mge',
-  'DatasetSP.removeRecord': 'mge',
   'AnexoSistemaSP.salvar': 'mge',
   'BoletoSP.buildPreVisualizacao': 'mge',
-  'BaixaFinanceiroSP.baixarTitulo': 'mge',
-  'AdiantamentoEmprestimoSP.salvarParcelamento': 'mge',
-  'AdiantamentoEmprestimoSP.gerarAdiantamentoEmprestimo': 'mge',
   'CACSP.incluirNota': 'mgecom',
   'CACSP.incluirAlterarCabecalhoNota': 'mgecom',
   'CACSP.incluirAlterarItemNota': 'mgecom',
   'CACSP.confirmarNota': 'mgecom',
-  'CACSP.cancelarNota': 'mgecom',
-  'CACSP.excluirNotas': 'mgecom',
-  'CACSP.excluirItemNota': 'mgecom',
   'ConsultaProdutosSP.consultaProdutos': 'mgecom',
   'EdicaoSerieSP.incluirSerie': 'mgecom',
   'ImpressaoNotasSP.imprimeDocumentos': 'mgecom',
@@ -214,6 +225,7 @@ const CONFIG_VENDEDOR = vendedor(CONTEXTO_ECOMMERCE, ['smtpPass', 'loopChaveClie
 export function regraDoServico(serviceName: string): RegraServico | undefined {
   if (Object.prototype.hasOwnProperty.call(SERVICOS, serviceName)) return SERVICOS[serviceName];
   if (serviceName === 'LoopEcommerceConfigSP.doConsultar') return CONFIG_VENDEDOR;
+  if (Object.prototype.hasOwnProperty.call(GENERICOS_VENDEDOR, serviceName)) return GENERICOS_VENDEDOR[serviceName];
   if (Object.prototype.hasOwnProperty.call(NATIVOS_VENDEDOR, serviceName)) return vendedor(NATIVOS_VENDEDOR[serviceName]);
   return METODOS_VENDEDOR.has(serviceName) ? vendedor(CONTEXTO_ECOMMERCE) : undefined;
 }
