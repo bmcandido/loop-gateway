@@ -146,7 +146,7 @@ test('sem configuração responde 503 e falha de rede 502, sem expor o token', a
   const r = await processarLoopApi({ metodo: 'GET', caminho, chave: CHAVE }, fora.deps);
   assert.equal(r.status, 502);
   assert.doesNotMatch(r.corpo, /TOKEN-UNICO/);
-  assert.match(r.corpo, /falha com [oculto]/);
+  assert.match(r.corpo, /falha com \[oculto\]/);
 });
 
 test('entrega: grava no Sankhya do CNPJ e a resposta nunca traz a chave', async () => {
