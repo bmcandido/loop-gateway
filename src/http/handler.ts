@@ -10,6 +10,7 @@ import { licencaDoSupabase } from '../core/licenca.ts';
 import { porCliente } from '../core/por-cliente.ts';
 import { SankhyaCliente } from '../core/sankhya.ts';
 import { type ProdutoGateway, regraDoServico } from '../core/servicos.ts';
+import { vendedorPorEmail } from '../core/vendedor.ts';
 import type { EventoGateway, PortaSankhya, ValidadorToken } from '../core/tipos.ts';
 
 // Gateway ÚNICO dos apps Loop em HTTP padrão (Request → Response). Roda na Edge Function do
@@ -54,6 +55,7 @@ export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Resp
   const exigeEmailConfirmado = cfg.exigirEmailVerificado === false
     ? async () => false
     : exigenciaDoPortal(exigenciaDeEmailPorCliente((cnpj) => sankhya(cnpj)));
+  const vendedorAtivo = vendedorPorEmail((cnpj) => sankhya(cnpj));
   const jwsDoDominio = jwsDoDominioNoSupabase(supabase);
   const origens = (cfg.origensWeb ?? []).filter(Boolean);
   let assinar: Promise<AssinadorIdentidade> | undefined;
@@ -113,6 +115,7 @@ export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Resp
         sankhya,
         assinar: assinador,
         exigeEmailConfirmado,
+        vendedorAtivo,
         registrar: cfg.registrar,
         ...cfg.sobrescrever,
       },

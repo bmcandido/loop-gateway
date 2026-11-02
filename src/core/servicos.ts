@@ -4,8 +4,10 @@ import type { ModuloSankhya } from './tipos.ts';
  * PUBLICO: chamado antes do login (tela de entrada). O codUsuPortal é
  *          removido do corpo, então o Add-on trata como visitante.
  * USUARIO: exige token de login válido.
+ * VENDEDOR: exige login válido e vendedor ativo no Sankhya do cliente. Só o login não basta:
+ *           o cadastro no app é aberto a qualquer pessoa.
  */
-export type Acesso = 'PUBLICO' | 'USUARIO';
+export type Acesso = 'PUBLICO' | 'USUARIO' | 'VENDEDOR';
 
 /** Produto que o serviço exige na licença (código em `clientesProdutos`). */
 export type ProdutoGateway = 'LoopPortal' | 'LoopEcommerce';
@@ -14,6 +16,8 @@ export interface RegraServico {
   acesso: Acesso;
   modulo: ModuloSankhya;
   produto: ProdutoGateway;
+  /** Campos retirados da resposta antes de voltar ao app. */
+  ocultar?: readonly string[];
 }
 
 /** Contexto do Add-on do Portal (rootProject.name de loopPortal-sankhya-addon/settings.gradle). */
@@ -107,6 +111,86 @@ export const SERVICOS: Readonly<Record<string, RegraServico>> = Object.freeze({
   'LoopPortalDocumentoSP.relatorios': usuario(),
 });
 
+const vendedor = (modulo: ModuloSankhya, ocultar?: readonly string[]): RegraServico => ({
+  acesso: 'VENDEDOR',
+  modulo,
+  produto: 'LoopEcommerce',
+  ...(ocultar ? { ocultar } : {}),
+});
+
+/** Serviços nativos do Sankhya usados pela força de vendas, cada um no contexto em que responde. */
+const NATIVOS_VENDEDOR: Readonly<Record<string, ModuloSankhya>> = Object.freeze({
+  'DbExplorerSP.executeQuery': 'mge',
+  'CRUDServiceProvider.loadRecords': 'mge',
+  'CRUDServiceProvider.loadView': 'mge',
+  'CRUDServiceProvider.saveRecord': 'mge',
+  'DatasetSP.save': 'mge',
+  'DatasetSP.removeRecord': 'mge',
+  'AnexoSistemaSP.salvar': 'mge',
+  'BoletoSP.buildPreVisualizacao': 'mge',
+  'BaixaFinanceiroSP.baixarTitulo': 'mge',
+  'AdiantamentoEmprestimoSP.salvarParcelamento': 'mge',
+  'AdiantamentoEmprestimoSP.gerarAdiantamentoEmprestimo': 'mge',
+  'CACSP.incluirNota': 'mgecom',
+  'CACSP.incluirAlterarCabecalhoNota': 'mgecom',
+  'CACSP.incluirAlterarItemNota': 'mgecom',
+  'CACSP.confirmarNota': 'mgecom',
+  'CACSP.cancelarNota': 'mgecom',
+  'CACSP.excluirNotas': 'mgecom',
+  'CACSP.excluirItemNota': 'mgecom',
+  'ConsultaProdutosSP.consultaProdutos': 'mgecom',
+  'EdicaoSerieSP.incluirSerie': 'mgecom',
+  'ImpressaoNotasSP.imprimeDocumentos': 'mgecom',
+  'SelecaoDocumentoSP.faturar': 'mgecom',
+  'ServicosNfeSP.confirmarNota': 'mgecom',
+});
+
+/**
+ * Serviços do Add-on que a força de vendas chama. Ficam fora os de segredos e conexões
+ * (IntegrationSecrets, MetaConnect, WhatsAppConnect, GoogleAds) e as telas administrativas.
+ */
+const CLASSES_VENDEDOR: ReadonlySet<string> = new Set([
+  'LoopEcommeceHelperControllerSP',
+  'LoopEcommerceAfiliadoAppSP',
+  'LoopEcommerceAgendaSP',
+  'LoopEcommerceBannersSP',
+  'LoopEcommerceCentroResultadoSP',
+  'LoopEcommerceClientesVendedorSP',
+  'LoopEcommerceConsultaProdutosSP',
+  'LoopEcommerceContratosAppSP',
+  'LoopEcommerceDashboardSP',
+  'LoopEcommerceDynamicConfigSP',
+  'LoopEcommerceEmailSP',
+  'LoopEcommerceEmpresasSP',
+  'LoopEcommerceGoogleCalendarSP',
+  'LoopEcommerceGoogleMapsSP',
+  'LoopEcommerceLeadTeamsSP',
+  'LoopEcommerceLeadsSP',
+  'LoopEcommerceLocaisSP',
+  'LoopEcommerceLookupSP',
+  'LoopEcommerceNaturezasSP',
+  'LoopEcommerceNegociacoesSP',
+  'LoopEcommerceProdutosSP',
+  'LoopEcommerceProjetosSP',
+  'LoopEcommerceQueryConfigSP',
+  'LoopEcommerceRelatoriosSP',
+  'LoopEcommerceTabelaPrecoSP',
+  'LoopEcommerceTipoOperacaoSP',
+  'LoopEcommerceTopFatOrcSP',
+  'LoopEcommerceTopFatPedSP',
+  'LoopEcommerceUsersSP',
+  'LoopEcommerceVisitasSP',
+  'LoopEcommerceVitrinesSP',
+  'LoopHubMensageriaSP',
+]);
+
+/** Configuração da loja para o vendedor: a senha de SMTP não sai do servidor. */
+const CONFIG_VENDEDOR = vendedor(CONTEXTO_ECOMMERCE, ['smtpPass', 'loopChaveCliente']);
+
 export function regraDoServico(serviceName: string): RegraServico | undefined {
-  return Object.prototype.hasOwnProperty.call(SERVICOS, serviceName) ? SERVICOS[serviceName] : undefined;
+  if (Object.prototype.hasOwnProperty.call(SERVICOS, serviceName)) return SERVICOS[serviceName];
+  if (serviceName === 'LoopEcommerceConfigSP.doConsultar') return CONFIG_VENDEDOR;
+  if (Object.prototype.hasOwnProperty.call(NATIVOS_VENDEDOR, serviceName)) return vendedor(NATIVOS_VENDEDOR[serviceName]);
+  const m = /^([A-Za-z]+SP)\.[A-Za-z0-9]+$/.exec(serviceName);
+  return m && CLASSES_VENDEDOR.has(m[1]) ? vendedor(CONTEXTO_ECOMMERCE) : undefined;
 }

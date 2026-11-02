@@ -29,6 +29,8 @@ export interface DependenciasGateway {
    * (Exigir confirmação de e-mail no login). Ausente = exige.
    */
   exigeEmailConfirmado?: (cnpj: string, produto?: ProdutoGateway) => Promise<boolean>;
+  /** O e-mail é de um vendedor ativo no Sankhya do cliente? */
+  vendedorAtivo?: (cnpj: string, email: string) => Promise<boolean>;
   /** JWS da licença do domínio do site (rota /icone). */
   jwsDoDominio?: (dominio: string) => Promise<string | null>;
   agoraSeg?: () => number;
@@ -99,7 +101,7 @@ async function servico(req: Requisicao, deps: DependenciasGateway, evento: Event
 
   // Token inválido é recusado mesmo em serviço público: não tratamos como visitante.
   const usuario = await autenticar(req.authorization, deps.validador);
-  if (regra.acesso === 'USUARIO' && !usuario) {
+  if (regra.acesso !== 'PUBLICO' && !usuario) {
     throw new ErroGateway(401, 'LOGIN_NECESSARIO', 'Sessão expirada. Entre novamente.');
   }
   evento.uid = usuario?.uid;
@@ -108,19 +110,24 @@ async function servico(req: Requisicao, deps: DependenciasGateway, evento: Event
     throw new ErroGateway(403, 'EMAIL_NAO_VERIFICADO', 'Confirme seu e-mail pelo link que enviamos para acessar o portal.');
   }
 
+  if (regra.acesso === 'VENDEDOR' && !(await deps.vendedorAtivo?.(cnpj, usuario!.email))) {
+    throw new ErroGateway(403, 'SEM_VINCULO_VENDEDOR', 'Usuário sem vínculo de vendedor.');
+  }
+
   const body: Record<string, unknown> = { ...requestBody };
   for (const c of CAMPOS_RESERVADOS) delete body[c];
 
-  if (usuario) {
+  // O vendedor é conferido aqui; os serviços dele não leem a identidade assinada.
+  if (usuario && regra.acesso !== 'VENDEDOR') {
     const agora = deps.agoraSeg?.() ?? Date.now() / 1000;
     body._portalAuth = await deps.assinar(usuario, cnpj, agora);
-  } else {
+  } else if (!usuario) {
     // visitante: o Add-on não pode receber um cliente escolhido pelo app
     delete body.codUsuPortal;
   }
 
   const envelope = await deps.sankhya(cnpj).chamar(serviceName, regra.modulo, body);
-  return { status: 200, corpo: desembrulhar(envelope) };
+  return { status: 200, corpo: semCampos(desembrulhar(envelope), regra.ocultar) };
 }
 
 async function autenticar(
@@ -135,6 +142,16 @@ async function autenticar(
   return validador.validar(m[1]);
 }
 
+
+function semCampos(v: unknown, campos: readonly string[] | undefined): unknown {
+  if (!campos?.length || v === null || typeof v !== 'object') return v;
+  if (Array.isArray(v)) return v.map((i) => semCampos(i, campos));
+  const r: Record<string, unknown> = {};
+  for (const [k, valor] of Object.entries(v)) {
+    if (!campos.includes(k)) r[k] = semCampos(valor, campos);
+  }
+  return r;
+}
 
 function objeto(v: unknown): Record<string, unknown> | undefined {
   return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
