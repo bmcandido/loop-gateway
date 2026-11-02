@@ -112,6 +112,7 @@ export const SERVICOS: Readonly<Record<string, RegraServico>> = Object.freeze({
   'LoopPortalDocumentoSP.gerar': usuario(),
   // Relatórios cadastrados no portal, já filtrados pelo perfil (sem o arquivo do relatório).
   'LoopPortalDocumentoSP.relatorios': usuario(),
+  'LoopPortalDocumentoSP.pesquisarLookup': usuario(),
 });
 
 const vendedor = (modulo: ModuloSankhya, ocultar?: readonly string[], conferir?: RegraServico['conferir']): RegraServico => ({
