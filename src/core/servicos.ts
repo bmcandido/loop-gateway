@@ -193,6 +193,7 @@ const METODOS_VENDEDOR: ReadonlySet<string> = new Set([
   'LoopEcommerceContratosAppSP.doValidar',
   'LoopEcommerceDocumentoSP.doGerarNota',
   'LoopEcommerceDocumentoSP.doGerarRelatorio',
+  'LoopEcommerceDocumentoSP.doPesquisarLookup',
   'LoopEcommerceLeadsSP.doAtualizarEtapa',
   'LoopEcommerceLeadsSP.doAtualizarLead',
   'LoopEcommerceLeadsSP.doCadastrarManual',
