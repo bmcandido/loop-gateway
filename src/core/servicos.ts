@@ -29,6 +29,9 @@ export const CONTEXTO_ADDON: ModuloSankhya = 'loop-portal';
 /** Contexto do Add-on do E-commerce. O nome antigo continua no Add-on de propósito. */
 export const CONTEXTO_ECOMMERCE: ModuloSankhya = 'loop-b2bb2c';
 
+/** Contexto do Add-on do Hub: quem conhece a instância da empresa e a chave da Loop API. */
+export const CONTEXTO_WHATSAPP: ModuloSankhya = 'loop-whatsapp';
+
 const usuario = (modulo: ModuloSankhya = CONTEXTO_ADDON): RegraServico => ({ acesso: 'USUARIO', modulo, produto: 'LoopPortal' });
 const publico: RegraServico = { acesso: 'PUBLICO', modulo: CONTEXTO_ADDON, produto: 'LoopPortal' };
 const publicoEcommerce: RegraServico = { acesso: 'PUBLICO', modulo: CONTEXTO_ECOMMERCE, produto: 'LoopEcommerce' };
@@ -217,8 +220,6 @@ const METODOS_VENDEDOR: ReadonlySet<string> = new Set([
   'LoopEcommerceTopFatPedSP.doConsultar',
   'LoopEcommerceUsersSP.doBuscarFoto',
   'LoopEcommerceUsersSP.doConsultar',
-  'LoopHubMensageriaSP.consultarPorReferencia',
-  'LoopHubMensageriaSP.registrarEnvioExterno',
 ]);
 
 /** Configuração da loja para o vendedor: a senha de SMTP não sai do servidor. */
@@ -229,5 +230,7 @@ export function regraDoServico(serviceName: string): RegraServico | undefined {
   if (serviceName === 'LoopEcommerceConfigSP.doConsultar') return CONFIG_VENDEDOR;
   if (Object.prototype.hasOwnProperty.call(GENERICOS_VENDEDOR, serviceName)) return GENERICOS_VENDEDOR[serviceName];
   if (Object.prototype.hasOwnProperty.call(NATIVOS_VENDEDOR, serviceName)) return vendedor(NATIVOS_VENDEDOR[serviceName]);
+  // O vendedor envia pelo Hub do cliente: o token da Loop API não sai do gateway.
+  if (serviceName === 'LoopHubMensageriaSP.doEnviarMensagem') return vendedor(CONTEXTO_WHATSAPP);
   return METODOS_VENDEDOR.has(serviceName) ? vendedor(CONTEXTO_ECOMMERCE) : undefined;
 }

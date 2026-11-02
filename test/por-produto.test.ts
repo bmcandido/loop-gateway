@@ -4,6 +4,7 @@ import { type DependenciasGateway, processar } from '../src/core/gateway.ts';
 import { verificadorPorProduto } from '../src/core/licenca-app.ts';
 import { ErroGateway } from '../src/core/tipos.ts';
 import { vendedorPorEmail } from '../src/core/vendedor.ts';
+import { regraDoServico } from '../src/core/servicos.ts';
 import { LICENCA_TESTE, licencaDe } from './fixtures.ts';
 
 const CNPJ = '36841880000176';
@@ -186,4 +187,12 @@ test('SQL recusado e gravação fora das entidades do app não chegam ao Sankhya
   assert.equal((await logado('DatasetSP.removeRecord', deps, { entityName: 'LOOPB2BB2CVISITA' })).status, 200);
   assert.equal((await logado('CRUDServiceProvider.saveRecord', deps, { dataSet: { rootEntity: 'LOOPB2BB2CVISITA' } })).status, 200);
   assert.equal(chamadas.length, 3);
+});
+
+test('envio de WhatsApp do vendedor vai ao Hub do cliente; métodos antigos saem da lista', () => {
+  const regra = regraDoServico('LoopHubMensageriaSP.doEnviarMensagem');
+  assert.equal(regra?.modulo, 'loop-whatsapp');
+  assert.equal(regra?.acesso, 'VENDEDOR');
+  assert.equal(regraDoServico('LoopHubMensageriaSP.registrarEnvioExterno'), undefined);
+  assert.equal(regraDoServico('LoopHubMensageriaSP.doReenviarMensagem'), undefined);
 });
