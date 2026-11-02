@@ -169,6 +169,13 @@ function campoDoCorpo(corpo: string | undefined, campo: string): string {
   }
 }
 
+/** Causa da falha de rede para o diagnóstico, nunca com o token. Só chega a quem tem chave válida. */
+export function motivoDaFalha(e: unknown, token: string): string {
+  const erro = e as { message?: unknown; cause?: { message?: unknown } } | null;
+  const texto = String(erro?.cause?.message ?? erro?.message ?? 'falha de conexão');
+  return (token ? texto.split(token).join('[oculto]') : texto).slice(0, 200);
+}
+
 async function entregarChave(req: RequisicaoLoopApi, deps: DependenciasLoopApi, evento: { cnpj?: string }): Promise<RespostaLoopApi> {
   if (req.metodo !== 'POST') throw recusa(403, 'OPERACAO_NAO_PERMITIDA', 'Operação não disponível na Loop API.');
   const cnpj = campoDoCorpo(req.corpo, 'cnpj');
@@ -216,8 +223,8 @@ async function encaminhar(req: RequisicaoLoopApi, deps: DependenciasLoopApi, eve
       body: req.metodo === 'POST' ? req.corpo ?? '' : undefined,
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-  } catch {
-    throw recusa(502, 'LOOPAPI_INDISPONIVEL', 'Loop API indisponível. Tente novamente.');
+  } catch (e) {
+    throw recusa(502, 'LOOPAPI_INDISPONIVEL', `Loop API indisponível (${motivoDaFalha(e, token)}). Tente novamente.`);
   }
   // A resposta vai como veio: o Add-on já trata os erros da API (instância inexistente ou em uso).
   return { status: r.status, corpo: await r.text() };
