@@ -67,6 +67,12 @@ export async function processar(req: Requisicao, deps: DependenciasGateway): Pro
   return resposta;
 }
 
+const ROTAS_ICONE: Readonly<Record<string, ProdutoGateway | undefined>> = {
+  '/icone': 'LoopPortal',
+  '/icone/ecommerce': 'LoopEcommerce',
+  '/icone/link': 'LoopPaymentLink',
+};
+
 async function rotear(req: Requisicao, deps: DependenciasGateway, evento: EventoGateway): Promise<RespostaGateway> {
   if (req.caminho === '/saude' && req.metodo === 'GET') {
     return { status: 200, corpo: { ok: true } };
@@ -75,8 +81,9 @@ async function rotear(req: Requisicao, deps: DependenciasGateway, evento: Evento
     throw new ErroGateway(405, 'METODO', 'Método não permitido.');
   }
   if (req.caminho === '/servico') return servico(req, deps, evento);
-  if (req.caminho === '/icone' || req.caminho === '/icone/ecommerce') {
-    const produto = req.caminho === '/icone' ? 'LoopPortal' : 'LoopEcommerce';
+  const produtoDoIcone = ROTAS_ICONE[req.caminho];
+  if (produtoDoIcone) {
+    const produto = produtoDoIcone;
     const { cnpj, ...resposta } = await iconeDoDominio(req.corpo, deps, produto);
     evento.cnpj = cnpj;
     return resposta;

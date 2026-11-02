@@ -237,3 +237,10 @@ test('página do Link vai ao Add-on dele; licença de outro produto e token inv�
   assert.equal((await pedirLink('12345678901234&OP=CIELO', tokenRuim.deps)).status, 403);
   assert.equal(tokenRuim.chamadas.length, 0);
 });
+
+test('ícone do Link vem do Add-on dele, sem exigir token de link', () => {
+  const regra = regraDoServico('LoopPaymentLinkPublicoSP.doIcone');
+  assert.equal(regra?.modulo, 'loop-link-pagamento');
+  assert.equal(regra?.produto, 'LoopPaymentLink');
+  assert.equal(regra?.conferir, undefined);
+});

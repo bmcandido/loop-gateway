@@ -59,6 +59,8 @@ const publicoLink: RegraServico = {
 
 export const SERVICOS: Readonly<Record<string, RegraServico>> = Object.freeze({
   'LoopPaymentLinkPublicoSP.doAbrirLink': publicoLink,
+  // Ícone ao publicar: o site ainda não tem link aberto, e a resposta traz só imagens que ele já mostra.
+  'LoopPaymentLinkPublicoSP.doIcone': { acesso: 'PUBLICO', modulo: CONTEXTO_LINK, produto: 'LoopPaymentLink' },
   'LoopPaymentLinkPublicoSP.doConsultar': publicoLink,
   // Canal do Add-on: o Add-on confere se pedido e empresa são os do token. doGerarChave fica fora.
   'LoopSecurePaymentSP.doConsultarModo': publicoLink,

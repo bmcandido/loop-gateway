@@ -93,6 +93,15 @@ export async function iconeDoDominio(
     return { status: 200, corpo: { imagem: typeof logo === 'string' && IMAGEM.test(logo) ? logo : null }, cnpj };
   }
 
+  if (produto === 'LoopPaymentLink') {
+    // Favicon ou logo da Identidade Visual (LOOPPAYMENTLINKCONFIG), da empresa principal do cliente.
+    const codEmp = await deps.codEmpDoCliente?.(cnpj);
+    if (!codEmp) return { status: 200, corpo: { imagem: null }, cnpj };
+    const visual = await dados('LoopPaymentLinkPublicoSP.doIcone', { codEmp });
+    const imagem = [visual?.favicon, visual?.logo].find((v) => typeof v === 'string' && IMAGEM.test(v));
+    return { status: 200, corpo: { imagem: imagem ?? null }, cnpj };
+  }
+
   const config = await dados('LoopPortalAppSP.consultarConfig', {});
   const codCfg = Number(config?.codCfg);
   if (!Number.isInteger(codCfg) || codCfg <= 0) {
