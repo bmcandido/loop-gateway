@@ -2,7 +2,7 @@ import type { AssinadorIdentidade } from './assinatura.ts';
 import { desembrulhar } from './desembrulhar.ts';
 import { iconeDoDominio } from './icone.ts';
 import type { LicencaDoApp } from './licenca-app.ts';
-import { regraDoServico } from './servicos.ts';
+import { type ProdutoGateway, regraDoServico } from './servicos.ts';
 import {
   ErroGateway,
   type EventoGateway,
@@ -17,9 +17,9 @@ export { desembrulhar };
 export interface DependenciasGateway {
   validador: ValidadorToken;
   /** Confere o JWS da licença enviado pelo app (X-Loop-Licenca) e devolve o CNPJ do cliente. */
-  licencaDoApp: (jws: string | null | undefined) => Promise<LicencaDoApp>;
+  licencaDoApp: (jws: string | null | undefined, produto?: ProdutoGateway) => Promise<LicencaDoApp>;
   /** Situação da licença do CNPJ no Supabase; sem ela nenhum serviço é atendido. */
-  licenca: (cnpj: string) => Promise<void>;
+  licenca: (cnpj: string, produto?: ProdutoGateway) => Promise<void>;
   /** Sankhya do cliente (credenciais do CNPJ no Supabase). */
   sankhya: (cnpj: string) => PortaSankhya;
   /** Assina a identidade do usuário para o Add-on (v2, ES256). */
@@ -28,7 +28,7 @@ export interface DependenciasGateway {
    * O cliente (CNPJ) exige e-mail confirmado? Vem da configuração do Add-on
    * (Exigir confirmação de e-mail no login). Ausente = exige.
    */
-  exigeEmailConfirmado?: (cnpj: string) => Promise<boolean>;
+  exigeEmailConfirmado?: (cnpj: string, produto?: ProdutoGateway) => Promise<boolean>;
   /** JWS da licença do domínio do site (rota /icone). */
   jwsDoDominio?: (dominio: string) => Promise<string | null>;
   agoraSeg?: () => number;
@@ -89,9 +89,9 @@ async function servico(req: Requisicao, deps: DependenciasGateway, evento: Event
     throw new ErroGateway(403, 'SERVICO_NAO_PERMITIDO', 'Serviço não disponível para o portal.');
   }
   // O cliente é o da licença assinada; licença inativa: nada passa, nem os serviços públicos.
-  const { cnpj } = await deps.licencaDoApp(req.licenca);
+  const { cnpj } = await deps.licencaDoApp(req.licenca, regra.produto);
   evento.cnpj = cnpj;
-  await deps.licenca(cnpj);
+  await deps.licenca(cnpj, regra.produto);
   const requestBody = corpo?.requestBody === undefined ? {} : objeto(corpo.requestBody);
   if (!requestBody) {
     throw new ErroGateway(400, 'CORPO_INVALIDO', 'Requisição inválida.');
@@ -103,7 +103,7 @@ async function servico(req: Requisicao, deps: DependenciasGateway, evento: Event
     throw new ErroGateway(401, 'LOGIN_NECESSARIO', 'Sessão expirada. Entre novamente.');
   }
   evento.uid = usuario?.uid;
-  if (usuario?.emailVerificado === false && (deps.exigeEmailConfirmado ? await deps.exigeEmailConfirmado(cnpj) : true)) {
+  if (usuario?.emailVerificado === false && (deps.exigeEmailConfirmado ? await deps.exigeEmailConfirmado(cnpj, regra.produto) : true)) {
     // conta Firebase sem e-mail confirmado poderia se passar por outro cliente (o portal acha o cliente pelo e-mail)
     throw new ErroGateway(403, 'EMAIL_NAO_VERIFICADO', 'Confirme seu e-mail pelo link que enviamos para acessar o portal.');
   }

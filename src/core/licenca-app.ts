@@ -1,3 +1,4 @@
+import type { ProdutoGateway } from './servicos.ts';
 import { ErroGateway } from './tipos.ts';
 
 // Licença que o app envia no cabeçalho X-Loop-Licenca: o JWS (campo "assinatura") do licenca.json
@@ -24,6 +25,14 @@ export interface ProdutoAceito {
 
 /** Loop Portal (Portal do Cliente). */
 export const PRODUTO_PORTAL: ProdutoAceito = { ids: ['dbd544b3-0bc2-40f3-9001-639ce339541e'], slug: 'LoopPortal' };
+
+/** Loop Ecommerce. Os códigos antigos (LoopB2B, LoopB2C) foram convertidos para este. */
+export const PRODUTO_ECOMMERCE: ProdutoAceito = { ids: ['5c2a1fe8-aab1-42c3-aa8e-c1e93cd6b6a2'], slug: 'LoopEcommerce' };
+
+const PRODUTOS_ACEITOS: Readonly<Record<ProdutoGateway, ProdutoAceito>> = {
+  LoopPortal: PRODUTO_PORTAL,
+  LoopEcommerce: PRODUTO_ECOMMERCE,
+};
 
 export interface LicencaDoApp {
   cnpj: string;
@@ -99,12 +108,25 @@ export function verificadorLicencaDoApp(chaves: ChaveLicenca[] = CHAVES_LICENCA,
       (p) => p && p.active !== false && (produto.ids.includes(String(p.produto_id ?? '').toLowerCase()) || p.slug === produto.slug),
     );
     if (STATUS_INATIVOS.has(status) || !temProduto) {
-      throw new ErroGateway(403, 'LICENCA_INATIVA', 'Portal sem licença ativa. Entre em contato com a administradora.');
+      throw new ErroGateway(403, 'LICENCA_INATIVA', 'Sem licença ativa para este produto. Entre em contato com a administradora.');
     }
 
     const r = { cnpj };
     if (cache.size > 500) cache.clear();
     cache.set(texto, r);
     return r;
+  };
+}
+
+/** Confere o JWS para o produto do serviço chamado: a licença de um produto não abre outro. */
+export function verificadorPorProduto(chaves: ChaveLicenca[] = CHAVES_LICENCA) {
+  const porProduto = new Map<ProdutoGateway, ReturnType<typeof verificadorLicencaDoApp>>();
+  return (jws: string | null | undefined, produto: ProdutoGateway = 'LoopPortal'): Promise<LicencaDoApp> => {
+    let verificar = porProduto.get(produto);
+    if (!verificar) {
+      verificar = verificadorLicencaDoApp(chaves, PRODUTOS_ACEITOS[produto]);
+      porProduto.set(produto, verificar);
+    }
+    return verificar(jws);
   };
 }
