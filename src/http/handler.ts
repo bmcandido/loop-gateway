@@ -7,12 +7,12 @@ import { credenciaisDoSupabase } from '../core/credenciais.ts';
 import { type DependenciasGateway, desembrulhar, processar } from '../core/gateway.ts';
 import { type ChaveLicenca, verificadorPorProduto } from '../core/licenca-app.ts';
 import { licencaDoSupabase } from '../core/licenca.ts';
-import { type ConfigLoopApi, processarLoopApi } from '../core/loopapi.ts';
+import { assinarEntrega, chaveDoSupabase, type ConfigLoopApi, limiteDeEntrega, processarLoopApi } from '../core/loopapi.ts';
 import { porCliente } from '../core/por-cliente.ts';
 import { SankhyaCliente } from '../core/sankhya.ts';
 import { type ProdutoGateway, regraDoServico } from '../core/servicos.ts';
 import { vendedorPorEmail } from '../core/vendedor.ts';
-import type { EventoGateway, PortaSankhya, ValidadorToken } from '../core/tipos.ts';
+import { ErroGateway, type EventoGateway, type PortaSankhya, type ValidadorToken } from '../core/tipos.ts';
 
 // Gateway ÚNICO dos apps Loop em HTTP padrão (Request → Response). Roda na Edge Function do
 // Supabase (padrão) e nos testes em Node. Nada é configurado por cliente: o cliente vem da licença
@@ -32,7 +32,7 @@ export interface ConfigGateway {
   origensWeb?: string[];
   exigirEmailVerificado?: boolean;
   registrar?: (e: EventoGateway) => void;
-  /** Loop API (Evolution): token único e segredo das chaves. Vazio = rota responde 503. */
+  /** Loop API (Evolution): URL e token único. Vazio = rota responde 503. */
   loopApi?: ConfigLoopApi;
   /** Só testes: chaves públicas de licença (padrão: as de produção). */
   chavesLicenca?: ChaveLicenca[];
@@ -63,6 +63,21 @@ export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Resp
   const codEmpDoCliente = codEmpDoClienteNoSupabase(supabase);
   const origens = (cfg.origensWeb ?? []).filter(Boolean);
   let assinar: Promise<AssinadorIdentidade> | undefined;
+  const chaveLoopApi = chaveDoSupabase(supabase);
+  const podeEntregar = limiteDeEntrega();
+  // A chave vai assinada para o Sankhya do próprio CNPJ, com as credenciais dele.
+  const entregarChaveLoopApi = async (cnpj: string, chave: string): Promise<void> => {
+    const privada = await chavePrivadaGateway(cfg.chavePrivada);
+    const entrega = await assinarEntrega(privada, cfg.kid, cnpj, chave, Date.now() / 1000);
+    const porta = cfg.sobrescrever?.sankhya ? cfg.sobrescrever.sankhya(cnpj) : sankhya(cnpj);
+    const r = desembrulhar(await porta.chamar('LoopWhatsappChaveSP.doReceber', 'loop-whatsapp', { ...entrega })) as {
+      status?: unknown;
+      responseBody?: { success?: unknown };
+      success?: unknown;
+    };
+    const ok = String(r?.status ?? '') === '1' && (r.responseBody?.success ?? r.success) === true;
+    if (!ok) throw new ErroGateway(502, 'ENTREGA_RECUSADA', 'O Sankhya desta empresa não confirmou o recebimento da chave.');
+  };
 
   return async (req) => {
     const origem = req.headers.get('origin');
@@ -95,8 +110,11 @@ export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Resp
           corpo: req.method === 'POST' ? await req.text() : undefined,
         },
         {
-          config: cfg.loopApi ?? { url: '', token: '', segredo: '' },
+          config: cfg.loopApi ?? { url: '', token: '' },
           licenca: (cnpj) => licenca(`${cnpj}|LoopWhatsApp`)(),
+          chaveDoCliente: chaveLoopApi,
+          entregar: entregarChaveLoopApi,
+          podeEntregar,
           registrar: cfg.registrar,
         },
       );

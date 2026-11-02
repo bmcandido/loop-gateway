@@ -35,7 +35,7 @@ export type FonteCredenciais = () => Promise<CredenciaisSankhya>;
  * Contexto do Sankhya na URL /gateway/v1/<contexto>/service.sbr. Serviços de ADD-ON respondem no
  * contexto do próprio add-on (= rootProject.name do settings.gradle); em /mge/ dão "Nenhum provedor".
  */
-export type ModuloSankhya = 'mge' | 'mgecom' | 'mgefin' | 'loop-portal' | 'loop-b2bb2c' | 'loop-expense';
+export type ModuloSankhya = 'mge' | 'mgecom' | 'mgefin' | 'loop-portal' | 'loop-b2bb2c' | 'loop-expense' | 'loop-whatsapp';
 
 /** Envelope devolvido pelo Sankhya ({status, statusMessage, responseBody}). */
 export type EnvelopeSankhya = Record<string, unknown>;
