@@ -1,6 +1,6 @@
 {
-  "name": "loop-portal-gateway",
-  "description": "Gateway do Portal do Cliente: valida o login do cliente e chama o Sankhya com as credenciais do servidor.",
+  "name": "loop-gateway",
+  "description": "Gateway unico dos apps Loop: valida o login do cliente e chama o Sankhya com as credenciais do servidor.",
   "private": true,
   "type": "module",
   "main": "lib/src/firebase/index.js",

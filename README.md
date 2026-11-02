@@ -1,4 +1,8 @@
-# Gateway ÚNICO do Portal do Cliente
+# Loop Gateway
+
+Gateway único dos apps Loop. Para entender para que serve, quem usa e como publicar, leia [docs/VISAO-GERAL.md](docs/VISAO-GERAL.md).
+
+Publicar: `npm run deploy` (roda os testes e publica `portal-gateway`).
 
 > **Plataforma: Supabase Edge Function `portal-gateway`** (projeto `zvncvdlfyeyktnuzxvlc`).
 > Login padrão: Supabase Auth. Firebase é só legado (cliente Pentágono, aceito via
