@@ -41,6 +41,14 @@ App ──(token de login)──▶ Gateway ──(sessão técnica + _portalAut
   `licenca.json` assinado pelo LoopMais; aqui é a trava que o navegador não
   contorna. `/saude` não passa pela licença.
 
+## Loop Expense (`expense-gateway`)
+
+Função própria com o mesmo núcleo (`src/expense/gateway.ts`). Produto `LoopExpense`, módulo
+`loop-expense` e só serviços `LoopExpense*SP`. O app único não tem licença assinada por domínio: a empresa
+sai de `usuarios.cpfCnpj` da conta verificada. O token conferido segue no corpo como `sessaoToken`, que o
+Add-on valida. Sem login, só `LoopExpenseSessaoSP.doVerificarCadastro`, na empresa do cabeçalho `X-Loop-Cnpj`.
+Publicar: `npx supabase functions deploy expense-gateway --project-ref zvncvdlfyeyktnuzxvlc --no-verify-jwt`.
+
 ## Rotas
 
 | Método | Caminho    | Corpo                                  | Login           |

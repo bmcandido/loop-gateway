@@ -1,0 +1,209 @@
+import { desembrulhar } from '../core/desembrulhar.ts';
+import { credenciaisDoSupabase } from '../core/credenciais.ts';
+import { licencaDoSupabase } from '../core/licenca.ts';
+import { porCliente } from '../core/por-cliente.ts';
+import { SankhyaCliente } from '../core/sankhya.ts';
+import {
+  ErroGateway,
+  type EventoGateway,
+  type ModuloSankhya,
+  type PortaSankhya,
+  type RespostaGateway,
+  type ValidadorToken,
+} from '../core/tipos.ts';
+import { validadorSupabase } from '../auth/supabase.ts';
+
+// Gateway do Loop Expense: o app deixa de ler credenciais e de falar direto com o Sankhya. O Add-on
+// continua conferindo o login pelo sessaoToken (JWT do Supabase) e decide o que cada um pode fazer.
+// Docs: loop-expense/docs/07_API_E_CONTRATOS.md e loop-admin/docs/licenciamento/06-MODELO-PARA-OUTROS-APPS.md.
+
+export const MODULO_EXPENSE: ModuloSankhya = 'loop-expense';
+export const PRODUTO_EXPENSE = 'LoopExpense';
+/** Aprovar com nota espera o Sankhya gravar e confirmar: o prazo padrão não basta. */
+const TIMEOUT_SANKHYA_MS = 90_000;
+const CACHE_USUARIO_MS = 5 * 60 * 1000;
+
+/** Só os serviços do Add-on do Expense. Nada de SQL livre, CRUD genérico ou serviço nativo do Sankhya. */
+const SERVICO_EXPENSE = /^LoopExpense[A-Za-z]+SP\.do[A-Za-z]+$/;
+/** Antes de existir a conta: confere se o e-mail está cadastrado na empresa escolhida. */
+const PUBLICOS = new Set(['LoopExpenseSessaoSP.doVerificarCadastro']);
+
+export interface DependenciasExpense {
+  validador: ValidadorToken;
+  /** CNPJ da empresa da conta, lido no servidor (`usuarios`). */
+  cnpjDoUsuario: (uid: string) => Promise<string | undefined>;
+  licenca: (cnpj: string) => Promise<void>;
+  sankhya: (cnpj: string) => PortaSankhya;
+  registrar?: (e: EventoGateway) => void;
+}
+
+export interface RequisicaoExpense {
+  metodo: string;
+  caminho: string;
+  authorization?: string | null;
+  /** Empresa escolhida na tela de cadastro; só vale para os serviços públicos. */
+  cnpj?: string | null;
+  corpo: unknown;
+}
+
+export async function processarExpense(req: RequisicaoExpense, deps: DependenciasExpense): Promise<RespostaGateway> {
+  const inicio = Date.now();
+  const evento: EventoGateway = { rota: req.caminho, status: 200, ms: 0 };
+  let resposta: RespostaGateway;
+  try {
+    resposta = await rotear(req, deps, evento);
+  } catch (e) {
+    const erro = e instanceof ErroGateway ? e : new ErroGateway(500, 'ERRO_INTERNO', 'Não foi possível concluir a operação. Tente novamente.');
+    evento.codigo = erro.codigo;
+    resposta = { status: erro.status, corpo: { status: '0', statusMessage: erro.message, codigoGateway: erro.codigo } };
+  }
+  evento.status = resposta.status;
+  evento.ms = Date.now() - inicio;
+  deps.registrar?.(evento);
+  return resposta;
+}
+
+async function rotear(req: RequisicaoExpense, deps: DependenciasExpense, evento: EventoGateway): Promise<RespostaGateway> {
+  if (req.caminho === '/saude' && req.metodo === 'GET') return { status: 200, corpo: { ok: true } };
+  if (req.metodo !== 'POST') throw new ErroGateway(405, 'METODO', 'Método não permitido.');
+  if (req.caminho !== '/servico') throw new ErroGateway(404, 'ROTA', 'Rota não encontrada.');
+
+  const corpo = objeto(req.corpo);
+  const serviceName = typeof corpo?.serviceName === 'string' ? corpo.serviceName : '';
+  evento.servico = serviceName || undefined;
+  if (!SERVICO_EXPENSE.test(serviceName)) {
+    throw new ErroGateway(403, 'SERVICO_NAO_PERMITIDO', 'Serviço não disponível para o aplicativo.');
+  }
+  const requestBody = corpo?.requestBody === undefined ? {} : objeto(corpo.requestBody);
+  if (!requestBody) throw new ErroGateway(400, 'CORPO_INVALIDO', 'Requisição inválida.');
+
+  const body: Record<string, unknown> = { ...requestBody };
+  // Sem isto, o Add-on trataria a chamada como sessão do usuário de integração.
+  delete body.sessaoToken;
+
+  let cnpj: string;
+  if (PUBLICOS.has(serviceName)) {
+    cnpj = (req.cnpj ?? '').replace(/\D/g, '');
+    if (cnpj.length !== 14) throw new ErroGateway(400, 'EMPRESA_INVALIDA', 'Selecione a empresa.');
+  } else {
+    const token = tokenDe(req.authorization);
+    const usuario = await deps.validador.validar(token);
+    evento.uid = usuario.uid;
+    cnpj = ((await deps.cnpjDoUsuario(usuario.uid)) ?? '').replace(/\D/g, '');
+    if (cnpj.length !== 14) throw new ErroGateway(403, 'USUARIO_SEM_EMPRESA', 'Sua conta não está ligada a uma empresa. Procure o administrador.');
+    body.sessaoToken = token;
+  }
+  evento.cnpj = cnpj;
+
+  // Licença inativa: nada passa, nem o serviço público.
+  await deps.licenca(cnpj);
+  const envelope = await deps.sankhya(cnpj).chamar(serviceName, MODULO_EXPENSE, body);
+  return { status: 200, corpo: desembrulhar(envelope) };
+}
+
+function tokenDe(authorization: string | null | undefined): string {
+  if (!authorization) throw new ErroGateway(401, 'LOGIN_NECESSARIO', 'Sessão expirada. Entre novamente.');
+  const m = /^Bearer\s+(\S{20,4096})$/.exec(authorization.trim());
+  if (!m) throw new ErroGateway(401, 'TOKEN_INVALIDO', 'Sessão inválida. Entre novamente.');
+  return m[1];
+}
+
+function objeto(v: unknown): Record<string, unknown> | undefined {
+  return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+}
+
+// ---------------------------------------------------------------- HTTP
+
+export interface ConfigExpense {
+  supabaseUrl: string;
+  supabaseChave: string;
+  registrar?: (e: EventoGateway) => void;
+  /** Só testes. */
+  sobrescrever?: Partial<Pick<DependenciasExpense, 'validador' | 'sankhya' | 'licenca' | 'cnpjDoUsuario'>>;
+}
+
+export function criarHandlerExpense(cfg: ConfigExpense): (req: Request) => Promise<Response> {
+  const supabase = { url: cfg.supabaseUrl, chave: cfg.supabaseChave };
+  const licenca = porCliente((cnpj) => licencaDoSupabase({ ...supabase, cnpj, produto: PRODUTO_EXPENSE }));
+  const sankhya = porCliente((cnpj) => new SankhyaCliente(credenciaisDoSupabase({ ...supabase, cnpj }), { timeoutMs: TIMEOUT_SANKHYA_MS }));
+  const deps: DependenciasExpense = {
+    validador: cfg.sobrescrever?.validador ?? validadorSupabase(cfg.supabaseUrl),
+    cnpjDoUsuario: cfg.sobrescrever?.cnpjDoUsuario ?? cnpjDoUsuarioNoSupabase(supabase),
+    licenca: cfg.sobrescrever?.licenca ?? ((cnpj) => licenca(cnpj)()),
+    sankhya: cfg.sobrescrever?.sankhya ?? sankhya,
+    registrar: cfg.registrar,
+  };
+
+  return async (req) => {
+    const origem = req.headers.get('origin');
+    const cors: Record<string, string> = origem ? { 'Access-Control-Allow-Origin': origem, Vary: 'Origin' } : {};
+    if (origem && req.method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          ...cors,
+          'Access-Control-Allow-Methods': 'GET, POST',
+          'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Loop-Cnpj, apikey, x-client-info',
+          'Access-Control-Max-Age': '3600',
+        },
+      });
+    }
+    let corpo: unknown = null;
+    if (req.method === 'POST') {
+      try {
+        corpo = await req.json();
+      } catch {
+        corpo = null;
+      }
+    }
+    const resposta = await processarExpense(
+      {
+        metodo: req.method,
+        caminho: rotaExpense(new URL(req.url).pathname),
+        authorization: req.headers.get('authorization'),
+        cnpj: req.headers.get('x-loop-cnpj'),
+        corpo,
+      },
+      deps,
+    );
+    return new Response(JSON.stringify(resposta.corpo), {
+      status: resposta.status,
+      headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors },
+    });
+  };
+}
+
+/** /functions/v1/expense-gateway/servico → /servico. */
+export function rotaExpense(pathname: string): string {
+  const p = pathname.replace(/\/+$/, '');
+  const m = /\/expense-gateway(\/.*)?$/.exec(p);
+  return (m ? m[1] : p) || '/';
+}
+
+/** A empresa sai da conta verificada, nunca do que o app informa. O Add-on ainda exige o e-mail cadastrado nela. */
+export function cnpjDoUsuarioNoSupabase(op: { url: string; chave: string; http?: typeof fetch }): (uid: string) => Promise<string | undefined> {
+  const base = `${op.url.replace(/\/+$/, '')}/rest/v1`;
+  const http = op.http ?? fetch;
+  const headers: Record<string, string> = { apikey: op.chave, Accept: 'application/json' };
+  if (!op.chave.startsWith('sb_')) headers.Authorization = `Bearer ${op.chave}`;
+  const cache = new Map<string, { cnpj: string; ate: number }>();
+
+  return async (uid) => {
+    const c = cache.get(uid);
+    if (c && Date.now() < c.ate) return c.cnpj;
+    const qs = new URLSearchParams({ select: 'cpfCnpj', idUsuario: `eq.${uid}`, limit: '1' });
+    let r: Response;
+    try {
+      r = await http(`${base}/usuarios?${qs}`, { headers, signal: AbortSignal.timeout(15_000) });
+    } catch {
+      throw new ErroGateway(503, 'SUPABASE_INDISPONIVEL', 'Serviço indisponível. Tente novamente.');
+    }
+    if (!r.ok) throw new ErroGateway(502, 'SUPABASE_RECUSOU', 'Serviço indisponível. Tente novamente.');
+    const linhas = (await r.json()) as unknown;
+    const cnpj = Array.isArray(linhas) ? String((linhas[0] as Record<string, unknown> | undefined)?.cpfCnpj ?? '') : '';
+    if (!cnpj) return undefined;
+    if (cache.size >= 2000) cache.delete(cache.keys().next().value as string);
+    cache.set(uid, { cnpj, ate: Date.now() + CACHE_USUARIO_MS });
+    return cnpj;
+  };
+}

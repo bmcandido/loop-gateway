@@ -13,6 +13,8 @@ const TIMEOUT_MS = 25_000;
 export interface OpcoesSankhya {
   http?: typeof fetch;
   agora?: () => number;
+  /** Prazo de cada chamada ao Sankhya. Padrão: 25 s. */
+  timeoutMs?: number;
 }
 
 /**
@@ -23,6 +25,7 @@ export interface OpcoesSankhya {
 export class SankhyaCliente implements PortaSankhya {
   private readonly http: typeof fetch;
   private readonly agora: () => number;
+  private readonly timeoutMs: number;
   private sessao?: { token: string; baseUrl: string; validaAte: number };
   private loginEmAndamento?: Promise<{ token: string; baseUrl: string }>;
 
@@ -32,6 +35,7 @@ export class SankhyaCliente implements PortaSankhya {
   ) {
     this.http = opcoes.http ?? fetch;
     this.agora = opcoes.agora ?? Date.now;
+    this.timeoutMs = opcoes.timeoutMs ?? TIMEOUT_MS;
   }
 
   async chamar(serviceName: string, modulo: ModuloSankhya, requestBody: Record<string, unknown>): Promise<EnvelopeSankhya> {
@@ -96,7 +100,7 @@ export class SankhyaCliente implements PortaSankhya {
 
   private async enviar(url: string, init: RequestInit): Promise<Response> {
     try {
-      return await this.http(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
+      return await this.http(url, { ...init, signal: AbortSignal.timeout(this.timeoutMs) });
     } catch {
       // sem detalhes: a mensagem do fetch pode carregar a URL com parâmetros
       throw new ErroGateway(504, 'SANKHYA_TEMPO', 'O ERP demorou a responder. Tente novamente.');

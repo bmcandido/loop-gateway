@@ -4,3 +4,7 @@ project_id = "zvncvdlfyeyktnuzxvlc"
 [functions.portal-gateway]
 verify_jwt = false
 import_map = "./functions/portal-gateway/deno.json"
+
+[functions.expense-gateway]
+verify_jwt = false
+import_map = "./functions/expense-gateway/deno.json"
