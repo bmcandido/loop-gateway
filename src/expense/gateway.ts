@@ -24,6 +24,8 @@ const TIMEOUT_SANKHYA_MS = 90_000;
 const CACHE_USUARIO_MS = 5 * 60 * 1000;
 /** Serviço público: limite por origem, por instância da função. */
 const PUBLICO_LIMITE = 10;
+/** Por empresa: acima do limite por origem, para vários colaboradores se cadastrarem ao mesmo tempo. */
+const PUBLICO_LIMITE_EMPRESA = 40;
 const PUBLICO_JANELA_MS = 60_000;
 const PUBLICO_INDISPONIVEL = 'Não foi possível confirmar o cadastro nesta empresa. Tente novamente mais tarde.';
 
@@ -41,6 +43,8 @@ export interface DependenciasExpense {
   licencaPublica?: (cnpj: string) => Promise<void>;
   /** Devolve false quando a origem passou do limite do serviço público. */
   permitirPublico?: (origem: string) => boolean;
+  /** O mesmo, por empresa: trocar de IP não libera a consulta de e-mails de um cliente. */
+  permitirEmpresa?: (cnpj: string) => boolean;
   sankhya: (cnpj: string) => PortaSankhya;
   registrar?: (e: EventoGateway) => void;
 }
@@ -124,6 +128,9 @@ async function publico(
   const cnpj = (req.cnpj ?? '').replace(/\D/g, '');
   if (!cnpjValido(cnpj)) throw new ErroGateway(400, 'EMPRESA_INVALIDA', 'Selecione a empresa.');
   evento.cnpj = cnpj;
+  if (deps.permitirEmpresa && !deps.permitirEmpresa(cnpj)) {
+    throw new ErroGateway(429, 'MUITAS_TENTATIVAS', 'Muitas tentativas. Aguarde um minuto e tente de novo.');
+  }
   let habilitado = false;
   try {
     await (deps.licencaPublica ?? deps.licenca)(cnpj);
@@ -162,7 +169,11 @@ export function limitadorPublico(limite = PUBLICO_LIMITE, janelaMs = PUBLICO_JAN
     const t = agora();
     const e = mapa.get(origem);
     if (!e || t >= e.ate) {
-      if (mapa.size >= 5000) mapa.clear();
+      if (mapa.size >= 5000) {
+        // Encher o mapa não pode zerar quem está no limite: saem só as janelas vencidas.
+        for (const [k, v] of mapa) if (t >= v.ate) mapa.delete(k);
+        if (mapa.size >= 5000) return false;
+      }
       mapa.set(origem, { ate: t + janelaMs, n: 1 });
       return true;
     }
@@ -203,6 +214,7 @@ export function criarHandlerExpense(cfg: ConfigExpense): (req: Request) => Promi
     licenca: cfg.sobrescrever?.licenca ?? ((cnpj) => licenca(cnpj)()),
     licencaPublica: cfg.sobrescrever?.licenca ?? ((cnpj) => licencaPublica(cnpj)()),
     permitirPublico: limitadorPublico(),
+    permitirEmpresa: limitadorPublico(PUBLICO_LIMITE_EMPRESA),
     sankhya: cfg.sobrescrever?.sankhya ?? sankhya,
     registrar: cfg.registrar,
   };
@@ -235,7 +247,7 @@ export function criarHandlerExpense(cfg: ConfigExpense): (req: Request) => Promi
         caminho: rotaExpense(new URL(req.url).pathname),
         authorization: req.headers.get('authorization'),
         cnpj: req.headers.get('x-loop-cnpj'),
-        origem: (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim(),
+        origem: origemDe(req.headers),
         corpo,
       },
       deps,
@@ -245,6 +257,14 @@ export function criarHandlerExpense(cfg: ConfigExpense): (req: Request) => Promi
       headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...cors },
     });
   };
+}
+
+/** IP informado pela plataforma. O começo do x-forwarded-for vem de quem chama e não serve para limitar. */
+export function origemDe(headers: Headers): string {
+  const plataforma = (headers.get('cf-connecting-ip') ?? '').trim();
+  if (plataforma) return plataforma;
+  const encaminhados = (headers.get('x-forwarded-for') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  return encaminhados[encaminhados.length - 1] ?? '';
 }
 
 /** /functions/v1/expense-gateway/servico → /servico. */

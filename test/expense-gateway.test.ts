@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ErroGateway, type ModuloSankhya, type PortaSankhya } from '../src/core/tipos.ts';
-import { cnpjDoUsuarioNoSupabase, cnpjValido, criarHandlerExpense, type DependenciasExpense, limitadorPublico, processarExpense, rotaExpense } from '../src/expense/gateway.ts';
+import { cnpjDoUsuarioNoSupabase, cnpjValido, criarHandlerExpense, type DependenciasExpense, limitadorPublico, origemDe, processarExpense, rotaExpense } from '../src/expense/gateway.ts';
 
 const TOKEN = 'token-valido-do-supabase-1234567890';
 const CNPJ = '36841880000176';
@@ -138,6 +138,20 @@ test('serviço público: CNPJ inválido não consulta nada e o limite por origem
   assert.deepEqual([permitir('a'), permitir('a'), permitir('a'), permitir('b')], [true, true, false, true]);
   t = 1000;
   assert.equal(permitir('a'), true);
+
+  const cheio = limitadorPublico(5, 1000, () => 0);
+  // mapa cheio de janelas ativas: recusa, sem zerar os contadores
+  const pequeno = limitadorPublico(1, 1000, () => 0);
+  assert.equal(pequeno('x'), true);
+  assert.equal(pequeno('x'), false);
+  assert.equal(cheio('y'), true);
+
+  assert.equal(origemDe(new Headers({ 'cf-connecting-ip': '200.1.1.1', 'x-forwarded-for': '9.9.9.9' })), '200.1.1.1');
+  assert.equal(origemDe(new Headers({ 'x-forwarded-for': '9.9.9.9, 200.2.2.2' })), '200.2.2.2');
+
+  const porEmpresa = montar({ permitirEmpresa: () => false });
+  assert.equal((await processarExpense(servico('LoopExpenseSessaoSP.doVerificarCadastro', {}, undefined, CNPJ), porEmpresa.deps)).status, 429);
+  assert.equal(porEmpresa.chamadas.length, 0);
 
   const limitado = montar({ permitirPublico: () => false });
   const r = await processarExpense(servico('LoopExpenseSessaoSP.doVerificarCadastro', {}, undefined, CNPJ), limitado.deps);
