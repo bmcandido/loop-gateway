@@ -5,6 +5,7 @@ import {
   chaveDoSupabase,
   cnpjDaChave,
   instanciaDoCliente,
+  motivoDaFalha,
   limiteDeEntrega,
   mensagemEntrega,
   processarLoopApi,
@@ -146,7 +147,8 @@ test('sem configuração responde 503 e falha de rede 502, sem expor o token', a
   const r = await processarLoopApi({ metodo: 'GET', caminho, chave: CHAVE }, fora.deps);
   assert.equal(r.status, 502);
   assert.doesNotMatch(r.corpo, /TOKEN-UNICO/);
-  assert.match(r.corpo, /falha com \[oculto\]/);
+  assert.match(r.corpo, /falha de conexão/);
+  assert.doesNotMatch(r.corpo, /falha com/);
 });
 
 test('entrega: grava no Sankhya do CNPJ e a resposta nunca traz a chave', async () => {
@@ -250,4 +252,15 @@ test('o registro não leva o nome da instância nem a chave', async () => {
   await processarLoopApi({ metodo: 'GET', caminho: `/instance/connect/${INSTANCIA}`, chave: CHAVE }, deps);
   assert.deepEqual(Object.keys(eventos[0] as object).sort(), ['cnpj', 'ms', 'rota', 'status']);
   assert.equal((eventos[0] as { rota: string }).rota, '/loopapi/instance/connect');
+});
+
+test('motivo da falha: só categoria, sem o texto do erro', () => {
+  const erro = (message: string, code?: string) => Object.assign(new Error(message), { cause: { message, code } });
+  assert.equal(motivoDaFalha(new TypeError('Invalid URL')), 'endereço inválido');
+  assert.equal(motivoDaFalha(erro('invalid peer certificate: UnknownIssuer')), 'certificado ou TLS');
+  assert.equal(motivoDaFalha(erro('dns error: failed to lookup address api.interna')), 'DNS');
+  assert.equal(motivoDaFalha(erro('Connection refused 10.0.0.1:8080')), 'conexão recusada');
+  assert.equal(motivoDaFalha(Object.assign(new Error('x'), { name: 'TimeoutError' })), 'tempo esgotado');
+  assert.equal(motivoDaFalha(new Error('qualquer coisa em api.interna')), 'falha de conexão');
+  assert.equal(motivoDaFalha(null), 'falha de conexão');
 });

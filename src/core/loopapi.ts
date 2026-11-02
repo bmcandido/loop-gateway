@@ -169,11 +169,16 @@ function campoDoCorpo(corpo: string | undefined, campo: string): string {
   }
 }
 
-/** Causa da falha de rede para o diagnóstico, nunca com o token. Só chega a quem tem chave válida. */
-export function motivoDaFalha(e: unknown, token: string): string {
-  const erro = e as { message?: unknown; cause?: { message?: unknown } } | null;
-  const texto = String(erro?.cause?.message ?? erro?.message ?? 'falha de conexão');
-  return (token ? texto.split(token).join('[oculto]') : texto).slice(0, 200);
+/** Categoria da falha de rede. Nunca o texto do erro, que pode trazer o endereço interno da API. */
+export function motivoDaFalha(e: unknown): string {
+  const erro = e as { name?: unknown; message?: unknown; cause?: { message?: unknown; code?: unknown } } | null;
+  const texto = [erro?.name, erro?.message, erro?.cause?.message, erro?.cause?.code].map((v) => String(v ?? '')).join(' ').toLowerCase();
+  if (/invalid url|url inv|failed to parse|builder error|relative/.test(texto)) return 'endereço inválido';
+  if (/timeout|timed out|abort/.test(texto)) return 'tempo esgotado';
+  if (/certificate|tls|ssl/.test(texto)) return 'certificado ou TLS';
+  if (/dns|lookup|name or service|enotfound|getaddrinfo/.test(texto)) return 'DNS';
+  if (/refused|econnrefused|reset|unreachable/.test(texto)) return 'conexão recusada';
+  return 'falha de conexão';
 }
 
 async function entregarChave(req: RequisicaoLoopApi, deps: DependenciasLoopApi, evento: { cnpj?: string }): Promise<RespostaLoopApi> {
@@ -224,7 +229,7 @@ async function encaminhar(req: RequisicaoLoopApi, deps: DependenciasLoopApi, eve
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (e) {
-    throw recusa(502, 'LOOPAPI_INDISPONIVEL', `Loop API indisponível (${motivoDaFalha(e, token)}). Tente novamente.`);
+    throw recusa(502, 'LOOPAPI_INDISPONIVEL', `Loop API indisponível (${motivoDaFalha(e)}). Tente novamente.`);
   }
   // A resposta vai como veio: o Add-on já trata os erros da API (instância inexistente ou em uso).
   return { status: r.status, corpo: await r.text() };
