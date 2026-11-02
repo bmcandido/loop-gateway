@@ -110,7 +110,6 @@ async function servico(req: Requisicao, deps: DependenciasGateway, evento: Event
 
   const body: Record<string, unknown> = { ...requestBody };
   for (const c of CAMPOS_RESERVADOS) delete body[c];
-  Object.assign(body, regra.fixos);
 
   if (usuario) {
     const agora = deps.agoraSeg?.() ?? Date.now() / 1000;

@@ -14,8 +14,6 @@ export interface RegraServico {
   acesso: Acesso;
   modulo: ModuloSankhya;
   produto: ProdutoGateway;
-  /** Valores que o gateway impõe no corpo, por cima do que o app enviou. */
-  fixos?: Readonly<Record<string, unknown>>;
 }
 
 /** Contexto do Add-on do Portal (rootProject.name de loopPortal-sankhya-addon/settings.gradle). */
@@ -27,8 +25,6 @@ export const CONTEXTO_ECOMMERCE: ModuloSankhya = 'loop-b2bb2c';
 const usuario = (modulo: ModuloSankhya = CONTEXTO_ADDON): RegraServico => ({ acesso: 'USUARIO', modulo, produto: 'LoopPortal' });
 const publico: RegraServico = { acesso: 'PUBLICO', modulo: CONTEXTO_ADDON, produto: 'LoopPortal' };
 const publicoEcommerce: RegraServico = { acesso: 'PUBLICO', modulo: CONTEXTO_ECOMMERCE, produto: 'LoopEcommerce' };
-/** Catálogo público: sempre a visão e o preço do consumidor, nunca os de vendedor ou afiliado. */
-const catalogoEcommerce: RegraServico = { ...publicoEcommerce, fixos: { contextoConsumidor: true, contextoAfiliado: false } };
 
 /**
  * Lista FECHADA do que o app pode chamar. Tudo fora daqui é recusado,
@@ -42,12 +38,11 @@ export const SERVICOS: Readonly<Record<string, RegraServico>> = Object.freeze({
 
   // E-commerce: abertura da loja e vitrine. LoopEcommerceConfigSP.doConsultar fica fora:
   // devolve dados internos e a senha de SMTP. doLojaPublica traz só o que o visitante vê.
+  // Catálogo e imagens de produto também ficam fora até o Add-on ter serviço próprio para o
+  // visitante: os atuais trazem campos internos e não conferem os produtos liberados.
   'LoopEcommerceConfigSP.doLojaPublica': publicoEcommerce,
   'LoopEcommerceVitrinesSP.doConfiguracaoLoja': publicoEcommerce,
-  'LoopEcommerceConsultaProdutosSP.doConsultar': catalogoEcommerce,
   'LoopEcommerceConsultaProdutosSP.doConsultarGrupos': publicoEcommerce,
-  'LoopEcommeceHelperControllerSP.doConsultarImagensProduto': publicoEcommerce,
-  'LoopEcommeceHelperControllerSP.doConsultarImagensProdutosLista': publicoEcommerce,
   'LoopEcommerceBannersSP.doListarAtivos': publicoEcommerce,
   'LoopEcommerceBannersSP.doImagem': publicoEcommerce,
   'LoopEcommerceConsumidorAppSP.doAvaliacoesProduto': publicoEcommerce,
