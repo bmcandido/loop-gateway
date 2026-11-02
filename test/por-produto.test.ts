@@ -71,3 +71,24 @@ test('verificador real: confere o JWS contra o produto do serviço', async () =>
   await assert.rejects(verificar(ecommerce, 'LoopPortal'), (e: ErroGateway) => e.codigo === 'LICENCA_INATIVA');
   await assert.rejects(verificar(ecommerce), (e: ErroGateway) => e.codigo === 'LICENCA_INATIVA');
 });
+
+test('vitrine pública: configuração interna fica fora e o catálogo é sempre o do consumidor', async () => {
+  const corpos: Record<string, unknown>[] = [];
+  const { deps } = montar(['LoopEcommerce']);
+  deps.sankhya = () => ({
+    async chamar(_s: string, _m: string, corpo: Record<string, unknown>) {
+      corpos.push(corpo);
+      return { status: '1', responseBody: { success: true } };
+    },
+  }) as never;
+  for (const proibido of ['LoopEcommerceConfigSP.doConsultar', 'LoopEcommerceUsersSP.doConsultar', 'LoopEcommerceQueryConfigSP.doConsultar']) {
+    assert.equal((await pedir(proibido, deps)).status, 403);
+  }
+  assert.equal((await pedir('LoopEcommerceConfigSP.doLojaPublica', deps)).status, 200);
+  const r = await processar({
+    metodo: 'POST', caminho: '/servico', licenca: 'JWS',
+    corpo: { serviceName: 'LoopEcommerceConsultaProdutosSP.doConsultar', requestBody: { codEmp: 1, contextoConsumidor: false, contextoAfiliado: true } },
+  }, deps);
+  assert.equal(r.status, 200);
+  assert.deepEqual(corpos.at(-1), { codEmp: 1, contextoConsumidor: true, contextoAfiliado: false });
+});
