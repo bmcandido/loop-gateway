@@ -198,7 +198,14 @@ test('envio de WhatsApp do vendedor vai ao Hub do cliente; métodos antigos saem
 });
 
 test('página do Link é pública, no contexto do Add-on, e só com token no formato certo', () => {
-  for (const servico of ['LoopPaymentLinkPublicoSP.doAbrirLink', 'LoopPaymentLinkPublicoSP.doConsultar']) {
+  for (const servico of [
+    'LoopPaymentLinkPublicoSP.doAbrirLink',
+    'LoopPaymentLinkPublicoSP.doConsultar',
+    'LoopSecurePaymentSP.doConsultarModo',
+    'LoopSecurePaymentSP.doProcessar',
+    'LoopSecurePaymentSP.doConsultarStatusPix',
+    'LoopSecurePaymentSP.doConsultarImagensPedido',
+  ]) {
     const regra = regraDoServico(servico);
     assert.equal(regra?.acesso, 'PUBLICO');
     assert.equal(regra?.modulo, 'loop-link-pagamento');

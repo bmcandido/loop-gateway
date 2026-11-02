@@ -60,6 +60,11 @@ const publicoLink: RegraServico = {
 export const SERVICOS: Readonly<Record<string, RegraServico>> = Object.freeze({
   'LoopPaymentLinkPublicoSP.doAbrirLink': publicoLink,
   'LoopPaymentLinkPublicoSP.doConsultar': publicoLink,
+  // Canal do Add-on: o Add-on confere se pedido e empresa são os do token. doGerarChave fica fora.
+  'LoopSecurePaymentSP.doConsultarModo': publicoLink,
+  'LoopSecurePaymentSP.doProcessar': publicoLink,
+  'LoopSecurePaymentSP.doConsultarStatusPix': publicoLink,
+  'LoopSecurePaymentSP.doConsultarImagensPedido': publicoLink,
 
   // E-commerce: conferência do carrinho, sem gravar (visitante também usa)
   'LoopEcommerceConsumidorAppSP.doConferirCarrinho': publicoEcommerce,
