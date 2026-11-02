@@ -146,42 +146,66 @@ const NATIVOS_VENDEDOR: Readonly<Record<string, ModuloSankhya>> = Object.freeze(
 });
 
 /**
- * Serviços do Add-on que a força de vendas chama. Ficam fora os de segredos e conexões
- * (IntegrationSecrets, MetaConnect, WhatsAppConnect, GoogleAds) e as telas administrativas.
+ * Métodos do Add-on que a força de vendas chama, um a um (levantados no código do app). Telas
+ * administrativas (salvar, excluir, permissões), segredos e conexões ficam fora.
  */
-const CLASSES_VENDEDOR: ReadonlySet<string> = new Set([
-  'LoopEcommeceHelperControllerSP',
-  'LoopEcommerceAfiliadoAppSP',
-  'LoopEcommerceAgendaSP',
-  'LoopEcommerceBannersSP',
-  'LoopEcommerceCentroResultadoSP',
-  'LoopEcommerceClientesVendedorSP',
-  'LoopEcommerceConsultaProdutosSP',
-  'LoopEcommerceContratosAppSP',
-  'LoopEcommerceDashboardSP',
-  'LoopEcommerceDynamicConfigSP',
-  'LoopEcommerceEmailSP',
-  'LoopEcommerceEmpresasSP',
-  'LoopEcommerceGoogleCalendarSP',
-  'LoopEcommerceGoogleMapsSP',
-  'LoopEcommerceLeadTeamsSP',
-  'LoopEcommerceLeadsSP',
-  'LoopEcommerceLocaisSP',
-  'LoopEcommerceLookupSP',
-  'LoopEcommerceNaturezasSP',
-  'LoopEcommerceNegociacoesSP',
-  'LoopEcommerceProdutosSP',
-  'LoopEcommerceProjetosSP',
-  'LoopEcommerceQueryConfigSP',
-  'LoopEcommerceRelatoriosSP',
-  'LoopEcommerceTabelaPrecoSP',
-  'LoopEcommerceTipoOperacaoSP',
-  'LoopEcommerceTopFatOrcSP',
-  'LoopEcommerceTopFatPedSP',
-  'LoopEcommerceUsersSP',
-  'LoopEcommerceVisitasSP',
-  'LoopEcommerceVitrinesSP',
-  'LoopHubMensageriaSP',
+const METODOS_VENDEDOR: ReadonlySet<string> = new Set([
+  'LoopEcommeceHelperControllerSP.doConsultarImagensProduto',
+  'LoopEcommeceHelperControllerSP.doConsultarImagensProdutosLista',
+  'LoopEcommerceCentroResultadoSP.doConsultar',
+  'LoopEcommerceClientesVendedorSP.doAssumirCliente',
+  'LoopEcommerceClientesVendedorSP.doConsultar',
+  'LoopEcommerceConsultaProdutosSP.doConsultar',
+  'LoopEcommerceDashboardSP.doConsultarResumo',
+  'LoopEcommerceDynamicConfigSP.doConsultarMetadata',
+  'LoopEcommerceDynamicConfigSP.doExecutarLookup',
+  'LoopEcommerceEmailSP.doEnviarPedido',
+  'LoopEcommerceEmpresasSP.doConsultarEmpresaConfig',
+  'LoopEcommerceGoogleMapsSP.doGeocodificar',
+  'LoopEcommerceAgendaSP.doContexto',
+  'LoopEcommerceAgendaSP.doConectar',
+  'LoopEcommerceAgendaSP.doConcluirConexao',
+  'LoopEcommerceAgendaSP.doDesconectar',
+  'LoopEcommerceAgendaSP.doEventos',
+  'LoopEcommerceContratosAppSP.doAnexarDocumento',
+  'LoopEcommerceContratosAppSP.doAssinaturaIniciar',
+  'LoopEcommerceContratosAppSP.doAssinaturaPdf',
+  'LoopEcommerceContratosAppSP.doAssinaturaStatus',
+  'LoopEcommerceContratosAppSP.doConfig',
+  'LoopEcommerceContratosAppSP.doDetalhe',
+  'LoopEcommerceContratosAppSP.doDocumentos',
+  'LoopEcommerceContratosAppSP.doFormulario',
+  'LoopEcommerceContratosAppSP.doGravar',
+  'LoopEcommerceContratosAppSP.doListar',
+  'LoopEcommerceContratosAppSP.doMarcarVenda',
+  'LoopEcommerceContratosAppSP.doModelos',
+  'LoopEcommerceContratosAppSP.doPendenciaVenda',
+  'LoopEcommerceContratosAppSP.doPesquisar',
+  'LoopEcommerceContratosAppSP.doValidar',
+  'LoopEcommerceLeadsSP.doAtualizarEtapa',
+  'LoopEcommerceLeadsSP.doAtualizarLead',
+  'LoopEcommerceLeadsSP.doCadastrarManual',
+  'LoopEcommerceLeadsSP.doConsultar',
+  'LoopEcommerceLeadsSP.doConsultarLead',
+  'LoopEcommerceLeadsSP.doReconciliarDocumentos',
+  'LoopEcommerceLeadsSP.doRegistrarAtividade',
+  'LoopEcommerceLeadsSP.doVincularDocumento',
+  'LoopEcommerceLeadsSP.doVincularParceiro',
+  'LoopEcommerceLeadsSP.doVincularVisita',
+  'LoopEcommerceNaturezasSP.doConsultar',
+  'LoopEcommerceNegociacoesSP.doConsultar',
+  'LoopEcommerceProdutosSP.doConsultar',
+  'LoopEcommerceProjetosSP.doConsultar',
+  'LoopEcommerceQueryConfigSP.doConsultar',
+  'LoopEcommerceRelatoriosSP.doConsultarComArquivo',
+  'LoopEcommerceTabelaPrecoSP.doConsultarTabelaPreco',
+  'LoopEcommerceTipoOperacaoSP.doConsultar',
+  'LoopEcommerceTopFatOrcSP.doConsultar',
+  'LoopEcommerceTopFatPedSP.doConsultar',
+  'LoopEcommerceUsersSP.doBuscarFoto',
+  'LoopEcommerceUsersSP.doConsultar',
+  'LoopHubMensageriaSP.consultarPorReferencia',
+  'LoopHubMensageriaSP.registrarEnvioExterno',
 ]);
 
 /** Configuração da loja para o vendedor: a senha de SMTP não sai do servidor. */
@@ -191,6 +215,5 @@ export function regraDoServico(serviceName: string): RegraServico | undefined {
   if (Object.prototype.hasOwnProperty.call(SERVICOS, serviceName)) return SERVICOS[serviceName];
   if (serviceName === 'LoopEcommerceConfigSP.doConsultar') return CONFIG_VENDEDOR;
   if (Object.prototype.hasOwnProperty.call(NATIVOS_VENDEDOR, serviceName)) return vendedor(NATIVOS_VENDEDOR[serviceName]);
-  const m = /^([A-Za-z]+SP)\.[A-Za-z0-9]+$/.exec(serviceName);
-  return m && CLASSES_VENDEDOR.has(m[1]) ? vendedor(CONTEXTO_ECOMMERCE) : undefined;
+  return METODOS_VENDEDOR.has(serviceName) ? vendedor(CONTEXTO_ECOMMERCE) : undefined;
 }

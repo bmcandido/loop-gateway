@@ -2,7 +2,11 @@ import { desembrulhar } from './desembrulhar.ts';
 import { ErroGateway, type PortaSankhya } from './tipos.ts';
 
 const CACHE_MS = 60 * 1000;
-const EMAIL = /^[^\s@']{1,64}@[^\s@']{1,190}$/;
+/**
+ * Só ASCII: em maiúsculas, "ı" e "ſ" viram "I" e "S", e um domínio parecido (lınk.com) casaria com o
+ * e-mail de um vendedor de link.com. Também impede aspas no SQL.
+ */
+const EMAIL = /^[\x21-\x26\x28-\x3f\x41-\x7e]{1,64}@[\x21-\x26\x28-\x3f\x41-\x7e]{1,190}$/;
 
 /**
  * Vendedor ativo pelo e-mail do login, na mesma regra do Add-on (VendedorSessao): usuário ativo do
@@ -12,8 +16,9 @@ const EMAIL = /^[^\s@']{1,64}@[^\s@']{1,190}$/;
 export function vendedorPorEmail(sankhyaDe: (cnpj: string) => PortaSankhya, agora: () => number = Date.now) {
   const cache = new Map<string, { ate: number; ativo: boolean }>();
   return async (cnpj: string, email: string): Promise<boolean> => {
-    const normalizado = email.trim().toUpperCase();
-    if (!EMAIL.test(normalizado)) return false;
+    const limpo = email.trim();
+    if (!EMAIL.test(limpo)) return false;
+    const normalizado = limpo.toUpperCase();
     const chave = `${cnpj}|${normalizado}`;
     const c = cache.get(chave);
     if (c && agora() < c.ate) return c.ativo;

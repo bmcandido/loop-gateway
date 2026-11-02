@@ -96,7 +96,22 @@ test('login sem vínculo de vendedor é recusado, e o vendedor entra no contexto
 
 test('segredos, telas administrativas e serviços desconhecidos ficam fora até para o vendedor', async () => {
   const { deps, chamadas } = comVendedor(true);
-  for (const s of ['LoopEcommerceIntegrationSecretsSP.doSalvar', 'LoopEcommerceConfigSP.doSalvar', 'LoopSupaBaseServiceSP.doConsultar', 'ActionExecutorSP.executeJava', 'LoopEcommerceUsersSP.do.Consultar']) {
+  for (const s of [
+    'LoopEcommerceIntegrationSecretsSP.doSalvar',
+    'LoopEcommerceConfigSP.doSalvar',
+    'LoopSupaBaseServiceSP.doConsultar',
+    'ActionExecutorSP.executeJava',
+    'LoopEcommerceUsersSP.do.Consultar',
+    'LoopEcommerceUsersSP.doSalvarAcesso',
+    'LoopEcommerceUsersSP.doEnviarRedefinicaoSenha',
+    'LoopEcommerceQueryConfigSP.doSalvar',
+    'LoopEcommerceBannersSP.doSalvar',
+    'LoopEcommerceVitrinesSP.doSalvar',
+    'LoopEcommerceGoogleMapsSP.doSalvar',
+    'LoopEcommerceEmailSP.testarSmtp',
+    'LoopEcommerceRelatoriosSP.doExcluir',
+    'LoopEcommerceProdutosSP.doSalvar',
+  ]) {
     assert.equal((await logado(s, deps)).status, 403, s);
   }
   assert.equal(chamadas.length, 0);
@@ -130,6 +145,9 @@ test('consulta do vendedor: resultado por e-mail, com cache, e falha não vira "
   assert.equal(await consulta(CNPJ, 'A@B.COM '), true);
   assert.equal(consultas, 1);
   assert.equal(await consulta(CNPJ, "x'or'1@b.com"), false);
+  // "ı" e "ſ" viram "I" e "S" em maiúsculas: domínio parecido não casa com o verdadeiro.
+  assert.equal(await consulta(CNPJ, 'vendedor@l\u0131nk.com'), false);
+  assert.equal(await consulta(CNPJ, 'vendedor@\u017Fite.com'), false);
   assert.equal(consultas, 1);
   resposta = { status: '1', responseBody: { rows: [] } };
   assert.equal(await consulta(CNPJ, 'c@d.com'), false);
