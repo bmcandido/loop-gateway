@@ -196,3 +196,37 @@ test('envio de WhatsApp do vendedor vai ao Hub do cliente; métodos antigos saem
   assert.equal(regraDoServico('LoopHubMensageriaSP.registrarEnvioExterno'), undefined);
   assert.equal(regraDoServico('LoopHubMensageriaSP.doReenviarMensagem'), undefined);
 });
+
+test('página do Link é pública, no contexto do Add-on, e só com token no formato certo', () => {
+  for (const servico of ['LoopPaymentLinkPublicoSP.doAbrirLink', 'LoopPaymentLinkPublicoSP.doConsultar']) {
+    const regra = regraDoServico(servico);
+    assert.equal(regra?.acesso, 'PUBLICO');
+    assert.equal(regra?.modulo, 'loop-link-pagamento');
+    assert.equal(regra?.produto, 'LoopPaymentLink');
+    assert.equal(regra?.conferir?.({ token: 'AbCdEfGhIjKlMnOpQrStUv' }), null);
+    assert.ok(regra?.conferir?.({ token: 'curto' }));
+    assert.ok(regra?.conferir?.({ token: "' OR 1=1 --aaaaaaaaaaaa" }));
+    assert.ok(regra?.conferir?.({}));
+  }
+  assert.equal(regraDoServico('LoopPaymentLinkPublicoSP.outroServico'), undefined);
+  assert.equal(regraDoServico('LoopSecurePaymentSP.doGerarChave'), undefined);
+});
+
+const ABRIR_LINK = 'LoopPaymentLinkPublicoSP.doAbrirLink';
+const pedirLink = (token: string, deps: DependenciasGateway) =>
+  processar({ metodo: 'POST', caminho: '/servico', licenca: 'JWS', corpo: { serviceName: ABRIR_LINK, requestBody: { token } } }, deps);
+
+test('página do Link vai ao Add-on dele; licença de outro produto e token inválido não chegam ao Sankhya', async () => {
+  const comLink = montar(['LoopPaymentLink']);
+  assert.equal((await pedirLink('AbCdEfGhIjKlMnOpQrStUv', comLink.deps)).status, 200);
+  assert.deepEqual(comLink.chamadas, [{ servico: ABRIR_LINK, modulo: 'loop-link-pagamento' }]);
+  assert.deepEqual(comLink.conferidos, ['LoopPaymentLink']);
+
+  const soPortal = montar(['LoopPortal']);
+  assert.equal((await pedirLink('AbCdEfGhIjKlMnOpQrStUv', soPortal.deps)).status, 403);
+  assert.equal(soPortal.chamadas.length, 0);
+
+  const tokenRuim = montar(['LoopPaymentLink']);
+  assert.equal((await pedirLink('12345678901234&OP=CIELO', tokenRuim.deps)).status, 403);
+  assert.equal(tokenRuim.chamadas.length, 0);
+});

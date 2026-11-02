@@ -29,9 +29,13 @@ export const PRODUTO_PORTAL: ProdutoAceito = { ids: ['dbd544b3-0bc2-40f3-9001-63
 /** Loop Ecommerce. Os códigos antigos (LoopB2B, LoopB2C) foram convertidos para este. */
 export const PRODUTO_ECOMMERCE: ProdutoAceito = { ids: ['5c2a1fe8-aab1-42c3-aa8e-c1e93cd6b6a2'], slug: 'LoopEcommerce' };
 
+/** Loop Link de Pagamento. */
+export const PRODUTO_LINK: ProdutoAceito = { ids: ['fd989b99-b8fd-4a99-b710-aa7b2f100998'], slug: 'LoopPaymentLink' };
+
 const PRODUTOS_ACEITOS: Readonly<Record<ProdutoGateway, ProdutoAceito>> = {
   LoopPortal: PRODUTO_PORTAL,
   LoopEcommerce: PRODUTO_ECOMMERCE,
+  LoopPaymentLink: PRODUTO_LINK,
 };
 
 export interface LicencaDoApp {

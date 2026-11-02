@@ -11,7 +11,7 @@ import type { ModuloSankhya } from './tipos.ts';
 export type Acesso = 'PUBLICO' | 'USUARIO' | 'VENDEDOR';
 
 /** Produto que o serviço exige na licença (código em `clientesProdutos`). */
-export type ProdutoGateway = 'LoopPortal' | 'LoopEcommerce';
+export type ProdutoGateway = 'LoopPortal' | 'LoopEcommerce' | 'LoopPaymentLink';
 
 export interface RegraServico {
   acesso: Acesso;
@@ -32,6 +32,9 @@ export const CONTEXTO_ECOMMERCE: ModuloSankhya = 'loop-b2bb2c';
 /** Contexto do Add-on do Hub: quem conhece a instância da empresa e a chave da Loop API. */
 export const CONTEXTO_WHATSAPP: ModuloSankhya = 'loop-whatsapp';
 
+/** Contexto do Add-on do Link de Pagamento. */
+export const CONTEXTO_LINK: ModuloSankhya = 'loop-link-pagamento';
+
 const usuario = (modulo: ModuloSankhya = CONTEXTO_ADDON): RegraServico => ({ acesso: 'USUARIO', modulo, produto: 'LoopPortal' });
 const publico: RegraServico = { acesso: 'PUBLICO', modulo: CONTEXTO_ADDON, produto: 'LoopPortal' };
 const publicoEcommerce: RegraServico = { acesso: 'PUBLICO', modulo: CONTEXTO_ECOMMERCE, produto: 'LoopEcommerce' };
@@ -42,7 +45,22 @@ const publicoEcommerce: RegraServico = { acesso: 'PUBLICO', modulo: CONTEXTO_ECO
  * nativos do Sankhya (boleto, relatórios, notas, renegociação): esses só
  * rodam dentro do Add-on, depois de conferir a posse.
  */
+/**
+ * Página de pagamento: quem recebe o link não tem login. O pedido vem do token do link, resolvido no
+ * Add-on; o token inválido nem chega ao Sankhya do cliente.
+ */
+const TOKEN_LINK = /^[A-Za-z0-9_-]{22}$/;
+const publicoLink: RegraServico = {
+  acesso: 'PUBLICO',
+  modulo: CONTEXTO_LINK,
+  produto: 'LoopPaymentLink',
+  conferir: (corpo) => (typeof corpo.token === 'string' && TOKEN_LINK.test(corpo.token) ? null : 'token do link inválido'),
+};
+
 export const SERVICOS: Readonly<Record<string, RegraServico>> = Object.freeze({
+  'LoopPaymentLinkPublicoSP.doAbrirLink': publicoLink,
+  'LoopPaymentLinkPublicoSP.doConsultar': publicoLink,
+
   // E-commerce: conferência do carrinho, sem gravar (visitante também usa)
   'LoopEcommerceConsumidorAppSP.doConferirCarrinho': publicoEcommerce,
 
