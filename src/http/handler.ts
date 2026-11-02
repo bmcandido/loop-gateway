@@ -7,6 +7,7 @@ import { credenciaisDoSupabase } from '../core/credenciais.ts';
 import { type DependenciasGateway, desembrulhar, processar } from '../core/gateway.ts';
 import { type ChaveLicenca, verificadorPorProduto } from '../core/licenca-app.ts';
 import { licencaDoSupabase } from '../core/licenca.ts';
+import { type ConfigLoopApi, processarLoopApi } from '../core/loopapi.ts';
 import { porCliente } from '../core/por-cliente.ts';
 import { SankhyaCliente } from '../core/sankhya.ts';
 import { type ProdutoGateway, regraDoServico } from '../core/servicos.ts';
@@ -31,6 +32,8 @@ export interface ConfigGateway {
   origensWeb?: string[];
   exigirEmailVerificado?: boolean;
   registrar?: (e: EventoGateway) => void;
+  /** Loop API (Evolution): token único e segredo das chaves. Vazio = rota responde 503. */
+  loopApi?: ConfigLoopApi;
   /** Só testes: chaves públicas de licença (padrão: as de produção). */
   chavesLicenca?: ChaveLicenca[];
   /** Só testes: troca validador/Sankhya. */
@@ -79,6 +82,25 @@ export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Resp
           },
         });
       }
+    }
+
+    // Chamada de servidor para servidor (Add-on do WhatsApp): não usa licença do app nem login.
+    const caminho = rota(new URL(req.url).pathname);
+    if (caminho.startsWith('/loopapi/')) {
+      const r = await processarLoopApi(
+        {
+          metodo: req.method,
+          caminho: caminho.slice('/loopapi'.length),
+          chave: req.headers.get('apikey'),
+          corpo: req.method === 'POST' ? await req.text() : undefined,
+        },
+        {
+          config: cfg.loopApi ?? { url: '', token: '', segredo: '' },
+          licenca: (cnpj) => licenca(`${cnpj}|LoopWhatsApp`)(),
+          registrar: cfg.registrar,
+        },
+      );
+      return new Response(r.corpo, { status: r.status, headers: { 'Content-Type': 'application/json; charset=utf-8' } });
     }
 
     assinar ??= chavePrivadaGateway(cfg.chavePrivada).then((k) => assinadorV2(k, cfg.kid));
