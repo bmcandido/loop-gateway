@@ -79,6 +79,18 @@ Ficam nos segredos do Supabase, nunca no repositório.
 
 ## Como desenvolver e publicar
 
+**A publicação é automática.** Um push na `main` que altere `src/`, `supabase/functions/`, `supabase/config.toml`, `package.json`, `package-lock.json` ou `tsconfig.json` roda os testes e, se passarem, publica `portal-gateway` e `expense-gateway` e confere `/saude` dos dois (`.github/workflows/publicar.yml`). Teste falhando impede a publicação. Acompanhe em `gh run list -w publicar.yml`.
+
+O workflow usa o segredo `SUPABASE_ACCESS_TOKEN` do repositório. Para cadastrar ou trocar:
+
+```bash
+gh secret set SUPABASE_ACCESS_TOKEN -R bmcandido/loop-gateway
+```
+
+Para publicar de novo sem alterar código: `gh workflow run publicar.yml -R bmcandido/loop-gateway`. Segredos da função (`LOOPAPI_TOKEN` e outros) continuam no Supabase e não passam pelo workflow.
+
+Publicação manual, se o GitHub estiver fora do ar:
+
 ```bash
 npm install
 npm test
