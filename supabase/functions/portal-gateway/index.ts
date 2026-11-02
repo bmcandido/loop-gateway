@@ -19,7 +19,6 @@ const handler = criarHandler({
   projetosFirebase: lista('PORTAL_FIREBASE_PROJETOS'),
   origensWeb: lista('PORTAL_ORIGENS_WEB'),
   exigirEmailVerificado: env('PORTAL_EXIGE_EMAIL_VERIFICADO') !== 'false',
-  produto: env('PORTAL_PRODUTO') || 'LoopPortal',
   // só metadados: nunca corpo, cabeçalhos, e-mail ou CPF
   registrar: (e) => (e.status >= 500 ? console.error('portal-gateway', JSON.stringify(e)) : console.log('portal-gateway', JSON.stringify(e))),
 });

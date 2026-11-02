@@ -7,16 +7,24 @@ import type { ModuloSankhya } from './tipos.ts';
  */
 export type Acesso = 'PUBLICO' | 'USUARIO';
 
+/** Produto que o serviço exige na licença (código em `clientesProdutos`). */
+export type ProdutoGateway = 'LoopPortal' | 'LoopEcommerce';
+
 export interface RegraServico {
   acesso: Acesso;
   modulo: ModuloSankhya;
+  produto: ProdutoGateway;
 }
 
 /** Contexto do Add-on do Portal (rootProject.name de loopPortal-sankhya-addon/settings.gradle). */
 export const CONTEXTO_ADDON: ModuloSankhya = 'loop-portal';
 
-const usuario = (modulo: ModuloSankhya = CONTEXTO_ADDON): RegraServico => ({ acesso: 'USUARIO', modulo });
-const publico: RegraServico = { acesso: 'PUBLICO', modulo: CONTEXTO_ADDON };
+/** Contexto do Add-on do E-commerce. O nome antigo continua no Add-on de propósito. */
+export const CONTEXTO_ECOMMERCE: ModuloSankhya = 'loop-b2bb2c';
+
+const usuario = (modulo: ModuloSankhya = CONTEXTO_ADDON): RegraServico => ({ acesso: 'USUARIO', modulo, produto: 'LoopPortal' });
+const publico: RegraServico = { acesso: 'PUBLICO', modulo: CONTEXTO_ADDON, produto: 'LoopPortal' };
+const publicoEcommerce: RegraServico = { acesso: 'PUBLICO', modulo: CONTEXTO_ECOMMERCE, produto: 'LoopEcommerce' };
 
 /**
  * Lista FECHADA do que o app pode chamar. Tudo fora daqui é recusado,
@@ -25,6 +33,9 @@ const publico: RegraServico = { acesso: 'PUBLICO', modulo: CONTEXTO_ADDON };
  * rodam dentro do Add-on, depois de conferir a posse.
  */
 export const SERVICOS: Readonly<Record<string, RegraServico>> = Object.freeze({
+  // E-commerce: conferência do carrinho, sem gravar (visitante também usa)
+  'LoopEcommerceConsumidorAppSP.doConferirCarrinho': publicoEcommerce,
+
   // Antes do login
   'LoopPortalVisualSP.doConsultar': publico,
   'LoopPortalBannerSP.doListarAtivos': publico,

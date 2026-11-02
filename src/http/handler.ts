@@ -5,11 +5,11 @@ import { validadorSupabase } from '../auth/supabase.ts';
 import { assinadorV2, chavePrivadaGateway, type AssinadorIdentidade } from '../core/assinatura.ts';
 import { credenciaisDoSupabase } from '../core/credenciais.ts';
 import { type DependenciasGateway, desembrulhar, processar } from '../core/gateway.ts';
-import { type ChaveLicenca, verificadorLicencaDoApp } from '../core/licenca-app.ts';
+import { type ChaveLicenca, verificadorPorProduto } from '../core/licenca-app.ts';
 import { licencaDoSupabase } from '../core/licenca.ts';
 import { porCliente } from '../core/por-cliente.ts';
 import { SankhyaCliente } from '../core/sankhya.ts';
-import { regraDoServico } from '../core/servicos.ts';
+import { type ProdutoGateway, regraDoServico } from '../core/servicos.ts';
 import type { EventoGateway, PortaSankhya, ValidadorToken } from '../core/tipos.ts';
 
 // Gateway ÚNICO dos apps Loop em HTTP padrão (Request → Response). Roda na Edge Function do
@@ -29,7 +29,6 @@ export interface ConfigGateway {
   /** Origens permitidas (CORS). Vazio = qualquer origem (não há cookie). */
   origensWeb?: string[];
   exigirEmailVerificado?: boolean;
-  produto?: string;
   registrar?: (e: EventoGateway) => void;
   /** Só testes: chaves públicas de licença (padrão: as de produção). */
   chavesLicenca?: ChaveLicenca[];
@@ -39,8 +38,11 @@ export interface ConfigGateway {
 
 export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Response> {
   const supabase = { url: cfg.supabaseUrl, chave: cfg.supabaseChave };
-  const licencaDoApp = cfg.chavesLicenca ? verificadorLicencaDoApp(cfg.chavesLicenca) : verificadorLicencaDoApp();
-  const licenca = porCliente((cnpj) => licencaDoSupabase({ ...supabase, cnpj, produto: cfg.produto || 'LoopPortal' }));
+  const licencaDoApp = cfg.chavesLicenca ? verificadorPorProduto(cfg.chavesLicenca) : verificadorPorProduto();
+  const licenca = porCliente((chave) => {
+    const [cnpj, produto] = chave.split('|');
+    return licencaDoSupabase({ ...supabase, cnpj, produto });
+  });
   const sankhya = porCliente((cnpj) => new SankhyaCliente(credenciaisDoSupabase({ ...supabase, cnpj })));
   const projetos = (cfg.projetosFirebase ?? []).filter(Boolean);
   // A confirmação de e-mail é decidida por cliente em processar(), com a configuração do Add-on.
@@ -51,7 +53,7 @@ export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Resp
   // PORTAL_EXIGE_EMAIL_VERIFICADO=false desliga para todos; senão vale a chave de cada cliente.
   const exigeEmailConfirmado = cfg.exigirEmailVerificado === false
     ? async () => false
-    : exigenciaDeEmailPorCliente((cnpj) => sankhya(cnpj));
+    : exigenciaDoPortal(exigenciaDeEmailPorCliente((cnpj) => sankhya(cnpj)));
   const jwsDoDominio = jwsDoDominioNoSupabase(supabase);
   const origens = (cfg.origensWeb ?? []).filter(Boolean);
   let assinar: Promise<AssinadorIdentidade> | undefined;
@@ -107,7 +109,7 @@ export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Resp
         validador,
         licencaDoApp,
         jwsDoDominio,
-        licenca: (cnpj) => licenca(cnpj)(),
+        licenca: (cnpj, produto = 'LoopPortal') => licenca(`${cnpj}|${produto}`)(),
         sankhya,
         assinar: assinador,
         exigeEmailConfirmado,
@@ -155,6 +157,12 @@ function valorExigeConfEmail(v: unknown, prof = 0): string | undefined {
     if (r !== undefined) return r;
   }
   return undefined;
+}
+
+/** Só o Portal tem a opção no Add-on; nos demais produtos o e-mail confirmado é sempre exigido. */
+function exigenciaDoPortal(portal: (cnpj: string) => Promise<boolean>) {
+  return (cnpj: string, produto: ProdutoGateway = 'LoopPortal') =>
+    produto === 'LoopPortal' ? portal(cnpj) : Promise.resolve(true);
 }
 
 /**
