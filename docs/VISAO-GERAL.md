@@ -107,6 +107,24 @@ Depois de publicar, `GET .../portal-gateway/saude` deve responder `{"ok":true}`.
 
 **O Dev Manager não publica mais o gateway junto com o Portal.** Se um app depender de um serviço novo, publique o gateway antes de compilar o app.
 
+## Trabalhar em outro computador
+
+Nada de publicação fica preso ao computador: o `SUPABASE_ACCESS_TOKEN` está no GitHub e os segredos da função estão no Supabase. **Não é preciso cadastrar nada de novo.** Para alterar e publicar, basta ter Git, Node 22 e acesso ao repositório:
+
+```bash
+git clone https://github.com/bmcandido/loop-gateway.git
+cd loop-gateway
+npm install
+npm test
+```
+
+O push na `main` publica sozinho. Só instale e autentique o resto se for usar:
+
+- **`gh auth login`:** para disparar ou acompanhar a publicação pelo terminal. Também dá para fazer pela aba Actions do GitHub.
+- **`npx supabase login`:** só para a publicação manual ou para mexer nos segredos da função.
+
+Os valores dos segredos não podem ser lidos de volta. Se o token vencer ou vazar, gere outro em https://supabase.com/dashboard/account/tokens, rode `gh secret set SUPABASE_ACCESS_TOKEN -R bmcandido/loop-gateway` e apague o antigo. Ao desativar o computador antigo, encerre as sessões dele com `gh auth logout` e `npx supabase logout`.
+
 ## Cuidados ao alterar
 
 - **Serviço novo:** entra em `src/core/servicos.ts`, senão o gateway responde `SERVICO_NAO_PERMITIDO`.
