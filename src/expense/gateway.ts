@@ -22,6 +22,10 @@ export const PRODUTO_EXPENSE = 'LoopExpense';
 /** Aprovar com nota espera o Sankhya gravar e confirmar: o prazo padrão não basta. */
 const TIMEOUT_SANKHYA_MS = 90_000;
 const CACHE_USUARIO_MS = 5 * 60 * 1000;
+/** Serviço público: limite por origem, por instância da função. */
+const PUBLICO_LIMITE = 10;
+const PUBLICO_JANELA_MS = 60_000;
+const PUBLICO_INDISPONIVEL = 'Não foi possível confirmar o cadastro nesta empresa. Tente novamente mais tarde.';
 
 /** Só os serviços do Add-on do Expense. Nada de SQL livre, CRUD genérico ou serviço nativo do Sankhya. */
 const SERVICO_EXPENSE = /^LoopExpense[A-Za-z]+SP\.do[A-Za-z]+$/;
@@ -33,6 +37,10 @@ export interface DependenciasExpense {
   /** CNPJ da empresa da conta, lido no servidor (`usuarios`). */
   cnpjDoUsuario: (uid: string) => Promise<string | undefined>;
   licenca: (cnpj: string) => Promise<void>;
+  /** Licença no caminho sem login: cache separado, para CNPJ de quem não entrou não tirar os clientes da memória. */
+  licencaPublica?: (cnpj: string) => Promise<void>;
+  /** Devolve false quando a origem passou do limite do serviço público. */
+  permitirPublico?: (origem: string) => boolean;
   sankhya: (cnpj: string) => PortaSankhya;
   registrar?: (e: EventoGateway) => void;
 }
@@ -43,6 +51,8 @@ export interface RequisicaoExpense {
   authorization?: string | null;
   /** Empresa escolhida na tela de cadastro; só vale para os serviços públicos. */
   cnpj?: string | null;
+  /** IP de quem chamou, para o limite do serviço público. */
+  origem?: string | null;
   corpo: unknown;
 }
 
@@ -81,24 +91,84 @@ async function rotear(req: RequisicaoExpense, deps: DependenciasExpense, evento:
   // Sem isto, o Add-on trataria a chamada como sessão do usuário de integração.
   delete body.sessaoToken;
 
-  let cnpj: string;
-  if (PUBLICOS.has(serviceName)) {
-    cnpj = (req.cnpj ?? '').replace(/\D/g, '');
-    if (cnpj.length !== 14) throw new ErroGateway(400, 'EMPRESA_INVALIDA', 'Selecione a empresa.');
-  } else {
-    const token = tokenDe(req.authorization);
-    const usuario = await deps.validador.validar(token);
-    evento.uid = usuario.uid;
-    cnpj = ((await deps.cnpjDoUsuario(usuario.uid)) ?? '').replace(/\D/g, '');
-    if (cnpj.length !== 14) throw new ErroGateway(403, 'USUARIO_SEM_EMPRESA', 'Sua conta não está ligada a uma empresa. Procure o administrador.');
-    body.sessaoToken = token;
-  }
+  if (PUBLICOS.has(serviceName)) return publico(serviceName, body, req, deps, evento);
+
+  const token = tokenDe(req.authorization);
+  const usuario = await deps.validador.validar(token);
+  evento.uid = usuario.uid;
+  const cnpj = ((await deps.cnpjDoUsuario(usuario.uid)) ?? '').replace(/\D/g, '');
+  if (cnpj.length !== 14) throw new ErroGateway(403, 'USUARIO_SEM_EMPRESA', 'Sua conta não está ligada a uma empresa. Procure o administrador.');
+  body.sessaoToken = token;
   evento.cnpj = cnpj;
 
   // Licença inativa: nada passa, nem o serviço público.
   await deps.licenca(cnpj);
   const envelope = await deps.sankhya(cnpj).chamar(serviceName, MODULO_EXPENSE, body);
   return { status: 200, corpo: desembrulhar(envelope) };
+}
+
+/**
+ * Sem login: resposta mínima e o mesmo erro para licença ou empresa inexistente, para não servir de
+ * consulta de quem é cliente. O e-mail cadastrado só é confirmado com `habilitado`.
+ */
+async function publico(
+  serviceName: string,
+  body: Record<string, unknown>,
+  req: RequisicaoExpense,
+  deps: DependenciasExpense,
+  evento: EventoGateway,
+): Promise<RespostaGateway> {
+  if (deps.permitirPublico && !deps.permitirPublico(req.origem || 'sem-origem')) {
+    throw new ErroGateway(429, 'MUITAS_TENTATIVAS', 'Muitas tentativas. Aguarde um minuto e tente de novo.');
+  }
+  const cnpj = (req.cnpj ?? '').replace(/\D/g, '');
+  if (!cnpjValido(cnpj)) throw new ErroGateway(400, 'EMPRESA_INVALIDA', 'Selecione a empresa.');
+  evento.cnpj = cnpj;
+  let habilitado = false;
+  try {
+    await (deps.licencaPublica ?? deps.licenca)(cnpj);
+    const envelope = desembrulhar(await deps.sankhya(cnpj).chamar(serviceName, MODULO_EXPENSE, body)) as Record<string, any>;
+    const resposta = envelope?.responseBody;
+    if (envelope?.status?.toString() !== '1' || resposta?.success !== true) {
+      throw new ErroGateway(502, 'CADASTRO_INDISPONIVEL', PUBLICO_INDISPONIVEL);
+    }
+    habilitado = resposta.data?.habilitado === true;
+  } catch (e) {
+    evento.codigo = e instanceof ErroGateway ? e.codigo : 'ERRO_INTERNO';
+    throw new ErroGateway(502, 'CADASTRO_INDISPONIVEL', PUBLICO_INDISPONIVEL);
+  }
+  return { status: 200, corpo: { status: '1', responseBody: { success: true, data: { habilitado } } } };
+}
+
+export function cnpjValido(cnpj: string): boolean {
+  if (!/^\d{14}$/.test(cnpj) || /^(\d)\1{13}$/.test(cnpj)) return false;
+  const dv = (n: number) => {
+    let soma = 0;
+    let peso = n - 7;
+    for (let i = 0; i < n; i++) {
+      soma += Number(cnpj[i]) * peso--;
+      if (peso < 2) peso = 9;
+    }
+    const r = soma % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  return dv(12) === Number(cnpj[12]) && dv(13) === Number(cnpj[13]);
+}
+
+/** Janela fixa em memória. Não substitui um limite na borda, mas barra a varredura de uma origem. */
+export function limitadorPublico(limite = PUBLICO_LIMITE, janelaMs = PUBLICO_JANELA_MS, agora: () => number = Date.now): (origem: string) => boolean {
+  const mapa = new Map<string, { ate: number; n: number }>();
+  return (origem) => {
+    const t = agora();
+    const e = mapa.get(origem);
+    if (!e || t >= e.ate) {
+      if (mapa.size >= 5000) mapa.clear();
+      mapa.set(origem, { ate: t + janelaMs, n: 1 });
+      return true;
+    }
+    e.n++;
+    return e.n <= limite;
+  };
 }
 
 function tokenDe(authorization: string | null | undefined): string {
@@ -125,11 +195,14 @@ export interface ConfigExpense {
 export function criarHandlerExpense(cfg: ConfigExpense): (req: Request) => Promise<Response> {
   const supabase = { url: cfg.supabaseUrl, chave: cfg.supabaseChave };
   const licenca = porCliente((cnpj) => licencaDoSupabase({ ...supabase, cnpj, produto: PRODUTO_EXPENSE }));
+  const licencaPublica = porCliente((cnpj) => licencaDoSupabase({ ...supabase, cnpj, produto: PRODUTO_EXPENSE }), 100);
   const sankhya = porCliente((cnpj) => new SankhyaCliente(credenciaisDoSupabase({ ...supabase, cnpj }), { timeoutMs: TIMEOUT_SANKHYA_MS }));
   const deps: DependenciasExpense = {
     validador: cfg.sobrescrever?.validador ?? validadorSupabase(cfg.supabaseUrl),
     cnpjDoUsuario: cfg.sobrescrever?.cnpjDoUsuario ?? cnpjDoUsuarioNoSupabase(supabase),
     licenca: cfg.sobrescrever?.licenca ?? ((cnpj) => licenca(cnpj)()),
+    licencaPublica: cfg.sobrescrever?.licenca ?? ((cnpj) => licencaPublica(cnpj)()),
+    permitirPublico: limitadorPublico(),
     sankhya: cfg.sobrescrever?.sankhya ?? sankhya,
     registrar: cfg.registrar,
   };
@@ -162,6 +235,7 @@ export function criarHandlerExpense(cfg: ConfigExpense): (req: Request) => Promi
         caminho: rotaExpense(new URL(req.url).pathname),
         authorization: req.headers.get('authorization'),
         cnpj: req.headers.get('x-loop-cnpj'),
+        origem: (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim(),
         corpo,
       },
       deps,

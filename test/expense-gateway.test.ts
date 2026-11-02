@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ErroGateway, type ModuloSankhya, type PortaSankhya } from '../src/core/tipos.ts';
-import { cnpjDoUsuarioNoSupabase, criarHandlerExpense, type DependenciasExpense, processarExpense, rotaExpense } from '../src/expense/gateway.ts';
+import { cnpjDoUsuarioNoSupabase, cnpjValido, criarHandlerExpense, type DependenciasExpense, limitadorPublico, processarExpense, rotaExpense } from '../src/expense/gateway.ts';
 
 const TOKEN = 'token-valido-do-supabase-1234567890';
 const CNPJ = '36841880000176';
@@ -23,7 +23,7 @@ function montar(extra: Partial<DependenciasExpense> = {}) {
     sankhya: (cnpj): PortaSankhya => ({
       async chamar(servico, modulo, corpo) {
         chamadas.push({ servico, modulo, corpo, cnpj });
-        return { status: '1', responseBody: { success: true, data: { ok: 1 } } };
+        return { status: '1', responseBody: { success: true, data: { ok: 1, habilitado: true, dadoInterno: 'x' } } };
       },
     }),
     ...extra,
@@ -101,8 +101,48 @@ test('licença inativa barra antes do Sankhya, inclusive no serviço público', 
   assert.equal((await processarExpense(servico('LoopExpenseDespesaSP.doListar', {}, `Bearer ${TOKEN}`), u.deps)).status, 403);
   assert.equal(u.chamadas.length, 0);
   const p = montar({ licenca });
-  assert.equal((await processarExpense(servico('LoopExpenseSessaoSP.doVerificarCadastro', {}, undefined, CNPJ), p.deps)).status, 403);
+  assert.equal((await processarExpense(servico('LoopExpenseSessaoSP.doVerificarCadastro', {}, undefined, CNPJ), p.deps)).status, 502);
   assert.equal(p.chamadas.length, 0);
+});
+
+test('serviço público devolve só habilitado e o mesmo erro para licença ou empresa', async () => {
+  const { deps } = montar();
+  const r = await processarExpense(servico('LoopExpenseSessaoSP.doVerificarCadastro', { email: 'a@b.com' }, undefined, CNPJ), deps);
+  assert.deepEqual(r.corpo, { status: '1', responseBody: { success: true, data: { habilitado: true } } });
+  const semLicenca = montar({
+    licenca: async () => {
+      throw new ErroGateway(403, 'LICENCA_EXPIRADA', 'Licença expirada.');
+    },
+  });
+  const a = await processarExpense(servico('LoopExpenseSessaoSP.doVerificarCadastro', {}, undefined, CNPJ), semLicenca.deps);
+  const semCliente = montar({
+    sankhya: () => ({
+      async chamar() {
+        throw new ErroGateway(502, 'CLIENTE_NAO_CADASTRADO', 'x');
+      },
+    }),
+  });
+  const b = await processarExpense(servico('LoopExpenseSessaoSP.doVerificarCadastro', {}, undefined, CNPJ), semCliente.deps);
+  assert.deepEqual(a, b);
+});
+
+test('serviço público: CNPJ inválido não consulta nada e o limite por origem barra a varredura', async () => {
+  const invalido = montar();
+  assert.equal((await processarExpense(servico('LoopExpenseSessaoSP.doVerificarCadastro', {}, undefined, '11111111111111'), invalido.deps)).status, 400);
+  assert.equal(invalido.licencas.length, 0);
+  assert.equal(cnpjValido(CNPJ), true);
+  assert.equal(cnpjValido('36841880000177'), false);
+
+  let t = 0;
+  const permitir = limitadorPublico(2, 1000, () => t);
+  assert.deepEqual([permitir('a'), permitir('a'), permitir('a'), permitir('b')], [true, true, false, true]);
+  t = 1000;
+  assert.equal(permitir('a'), true);
+
+  const limitado = montar({ permitirPublico: () => false });
+  const r = await processarExpense(servico('LoopExpenseSessaoSP.doVerificarCadastro', {}, undefined, CNPJ), limitado.deps);
+  assert.equal(r.status, 429);
+  assert.equal(limitado.chamadas.length, 0);
 });
 
 test('erro inesperado não expõe detalhe e o registro não leva corpo', async () => {
