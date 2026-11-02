@@ -144,14 +144,12 @@ const GENERICOS_VENDEDOR: Readonly<Record<string, RegraServico>> = Object.freeze
  */
 const NATIVOS_VENDEDOR: Readonly<Record<string, ModuloSankhya>> = Object.freeze({
   'AnexoSistemaSP.salvar': 'mge',
-  'BoletoSP.buildPreVisualizacao': 'mge',
   'CACSP.incluirNota': 'mgecom',
   'CACSP.incluirAlterarCabecalhoNota': 'mgecom',
   'CACSP.incluirAlterarItemNota': 'mgecom',
   'CACSP.confirmarNota': 'mgecom',
   'ConsultaProdutosSP.consultaProdutos': 'mgecom',
   'EdicaoSerieSP.incluirSerie': 'mgecom',
-  'ImpressaoNotasSP.imprimeDocumentos': 'mgecom',
   'SelecaoDocumentoSP.faturar': 'mgecom',
   'ServicosNfeSP.confirmarNota': 'mgecom',
 });
@@ -193,6 +191,8 @@ const METODOS_VENDEDOR: ReadonlySet<string> = new Set([
   'LoopEcommerceContratosAppSP.doPendenciaVenda',
   'LoopEcommerceContratosAppSP.doPesquisar',
   'LoopEcommerceContratosAppSP.doValidar',
+  'LoopEcommerceDocumentoSP.doGerarNota',
+  'LoopEcommerceDocumentoSP.doGerarRelatorio',
   'LoopEcommerceLeadsSP.doAtualizarEtapa',
   'LoopEcommerceLeadsSP.doAtualizarLead',
   'LoopEcommerceLeadsSP.doCadastrarManual',
