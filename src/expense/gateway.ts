@@ -131,7 +131,7 @@ async function publico(
   let habilitado = false;
   try {
     await (deps.licencaPublica ?? deps.licenca)(cnpj);
-    // Depois da licença: CNPJ inventado não ocupa o limitador.
+    // Depois da licença: CNPJ inventado não ocupa o limitador. O erro é o mesmo de sem licença, para não revelar quem é cliente.
     if (deps.permitirEmpresa && !deps.permitirEmpresa(cnpj)) {
       throw new ErroGateway(429, 'MUITAS_TENTATIVAS', 'Muitas tentativas. Aguarde um minuto e tente de novo.');
     }
@@ -142,7 +142,6 @@ async function publico(
     }
     habilitado = resposta.data?.habilitado === true;
   } catch (e) {
-    if (e instanceof ErroGateway && e.codigo === 'MUITAS_TENTATIVAS') throw e;
     evento.codigo = e instanceof ErroGateway ? e.codigo : 'ERRO_INTERNO';
     throw new ErroGateway(502, 'CADASTRO_INDISPONIVEL', PUBLICO_INDISPONIVEL);
   }

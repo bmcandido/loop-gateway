@@ -150,7 +150,7 @@ test('serviço público: CNPJ inválido não consulta nada e o limite por origem
   assert.equal(origemDe(new Headers({ 'x-forwarded-for': '9.9.9.9, 200.2.2.2' })), '200.2.2.2');
 
   const porEmpresa = montar({ permitirEmpresa: () => false });
-  assert.equal((await processarExpense(servico('LoopExpenseSessaoSP.doVerificarCadastro', {}, undefined, CNPJ), porEmpresa.deps)).status, 429);
+  assert.equal((await processarExpense(servico('LoopExpenseSessaoSP.doVerificarCadastro', {}, undefined, CNPJ), porEmpresa.deps)).status, 502);
   assert.equal(porEmpresa.chamadas.length, 0);
 
   const limitado = montar({ permitirPublico: () => false });
