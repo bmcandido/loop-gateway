@@ -45,6 +45,10 @@ App ──(token de login)──▶ Gateway ──(sessão técnica + _portalAut
   `licenca.json` assinado pelo LoopMais; aqui é a trava que o navegador não
   contorna. `/saude` não passa pela licença.
 
+## LoopFactory (`producao-gateway`)
+
+Função própria com o mesmo núcleo do Expense (`src/core/gateway-app.ts`). Produto `LoopFactory`, módulo `loop-producao` e lista fechada de serviços em `src/producao/gateway.ts`, porque os demais serviços do Add-on confiam na sessão de administrador. Sem login, só `LoopProducaoUsuariosSP.doVerificarCadastro`.
+
 ## Loop Expense (`expense-gateway`)
 
 Função própria com o mesmo núcleo (`src/expense/gateway.ts`). Produto `LoopExpense`, módulo

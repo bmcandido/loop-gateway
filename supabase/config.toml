@@ -8,3 +8,7 @@ import_map = "./functions/portal-gateway/deno.json"
 [functions.expense-gateway]
 verify_jwt = false
 import_map = "./functions/expense-gateway/deno.json"
+
+[functions.producao-gateway]
+verify_jwt = false
+import_map = "./functions/producao-gateway/deno.json"

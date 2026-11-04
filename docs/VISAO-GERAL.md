@@ -30,6 +30,7 @@ Add-on do WhatsApp ──(chave do cliente)──▶ Gateway ──(token único
 | Dev Manager | Ícone do cliente ao publicar o site | `POST /icone`, `POST /icone/ecommerce` |
 | Add-on do WhatsApp (Hub) | Falar com a Loop API sem expor o token único | `/loopapi/*` |
 | Loop Expense | Gateway próprio do app | Função `expense-gateway` |
+| LoopFactory | Gateway próprio do app, com lista fechada de serviços | Função `producao-gateway` |
 
 Link de Pagamento, Stok e Delivery ainda não passam pelo gateway.
 
@@ -55,7 +56,9 @@ Quando o Add-on não tem chave, ele chama `/loopapi/entregar`. O gateway grava a
 src/core/        regras: gateway, serviços liberados, filtro SQL, licença, Loop API, ícone
 src/auth/        validação de login (Supabase Auth; Firebase só para o legado)
 src/http/        handler HTTP (Request → Response) usado pela Edge Function e pelos testes
+src/core/gateway-app.ts  núcleo dos gateways de app com login do Supabase
 src/expense/     gateway do Loop Expense
+src/producao/    gateway do LoopFactory
 src/firebase/    versão antiga em Firebase, sem deploy
 supabase/        configuração e entrada das Edge Functions
 test/            testes (node:test)
