@@ -19,7 +19,13 @@ export const PRODUTO_STOK = 'LoopStok';
 /** Antes de existir a conta: confere se o e-mail está cadastrado na empresa escolhida. */
 const PUBLICOS = new Set(['LoopStokUsuariosSP.doVerificarCadastro']);
 
-const LIBERADOS = new Set([...PUBLICOS, 'LoopStokUsuariosSP.doBuscarFoto', 'LoopStokUsuariosSP.doMeuCadastro']);
+const LIBERADOS = new Set([
+  ...PUBLICOS,
+  'LoopStokConfigSP.doConsultar',
+  'LoopStokConsultaSP.doExecutar',
+  'LoopStokUsuariosSP.doBuscarFoto',
+  'LoopStokUsuariosSP.doMeuCadastro',
+]);
 
 const PERFIL: PerfilApp = {
   funcao: 'stok-gateway',

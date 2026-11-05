@@ -38,7 +38,7 @@ test('a licença exigida é a do LoopStok', () => {
 });
 
 test('libera os serviços do app, no contexto do add-on, com o token conferido', async () => {
-  for (const nome of ['LoopStokUsuariosSP.doBuscarFoto', 'LoopStokUsuariosSP.doMeuCadastro']) {
+  for (const nome of ['LoopStokConfigSP.doConsultar', 'LoopStokConsultaSP.doExecutar', 'LoopStokUsuariosSP.doBuscarFoto', 'LoopStokUsuariosSP.doMeuCadastro']) {
     const { deps, chamadas } = montar();
     const r = await processarStok(servico(nome, { sessaoToken: 'de-outra-pessoa' }), deps);
     assert.equal(r.status, 200, nome);
