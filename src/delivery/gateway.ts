@@ -90,6 +90,9 @@ export const LIBERADOS: ReadonlySet<string> = new Set([
   'LoopDeliveryFormacaoCargasSP.doConferencia',
   'LoopDeliveryFormacaoCargasSP.doDecidirDivergencia',
   'LoopDeliveryFormacaoCargasSP.doConcluirConferencia',
+  // Despesas da viagem: nota/título, confirmação e comprovante no servidor, idempotente pelo id da despesa
+  'LoopDeliveryDespesaAppSP.doEnviar',
+  'LoopDeliveryDespesaAppSP.doConfirmarNota',
   // LoopSign (sessão confere a nota do motorista; o token não vai ao LoopSign)
   'LoopDeliveryConfigSP.doCriarSessaoLoopSign',
   'LoopDeliverySignWebhookSP.doConsultarStatusAnexoPorNota',
