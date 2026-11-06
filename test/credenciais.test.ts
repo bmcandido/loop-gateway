@@ -51,6 +51,24 @@ test('teste: tipoIntegracao do cliente escolhe o app OAuth de teste', async () =
   assert.equal(c.baseUrl, 'https://api.sandbox.sankhya.com.br');
 });
 
+test('teste: X-Token do sandbox quando preenchido; vazio cai no token principal', async () => {
+  const comSandbox = supabaseFalso({
+    clientes: [{ cpfCnpj: '36841880000176', token: 'xt', tokenSandbox: ' xt-sb ', tipoIntegracao: 'teste' }],
+    loopapp: APPS,
+  });
+  assert.equal((await credenciaisDoSupabase(opcoes(comSandbox.http))()).xToken, 'xt-sb');
+  const semSandbox = supabaseFalso({
+    clientes: [{ cpfCnpj: '36841880000176', token: 'xt', tokenSandbox: '', tipoIntegracao: 'teste' }],
+    loopapp: APPS,
+  });
+  assert.equal((await credenciaisDoSupabase(opcoes(semSandbox.http))()).xToken, 'xt');
+  const producao = supabaseFalso({
+    clientes: [{ cpfCnpj: '36841880000176', token: 'xt', tokenSandbox: 'xt-sb', tipoIntegracao: 'producao' }],
+    loopapp: APPS,
+  });
+  assert.equal((await credenciaisDoSupabase(opcoes(producao.http))()).xToken, 'xt');
+});
+
 test('chave sb_secret_ vai só no cabeçalho apikey', async () => {
   const { http, pedidos } = supabaseFalso({ clientes: [{ cpfCnpj: '36841880000176', token: 'xt' }], loopapp: APPS });
   await credenciaisDoSupabase(opcoes(http, 'sb_secret_x'))();

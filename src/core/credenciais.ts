@@ -21,7 +21,8 @@ type Linha = Record<string, unknown>;
 
 /**
  * Credenciais do Sankhya lidas no Supabase, como no app:
- * - `clientes` (pelo CNPJ do cliente): X-Token (`token`) e `tipoIntegracao`;
+ * - `clientes` (pelo CNPJ do cliente): X-Token (`token`, ou `tokenSandbox` fora de
+ *   produção quando preenchido, como no app) e `tipoIntegracao`;
  * - `loopapp` (pelo CNPJ da Loop e o mesmo `tipoIntegracao`): `clienteId`,
  *   `clienteSecret` e `urlBase` do app OAuth de produção ou de teste.
  */
@@ -56,7 +57,7 @@ export function credenciaisDoSupabase(op: OpcoesSupabase): FonteCredenciais {
   return async () => {
     if (cache && Date.now() < cache.ate) return cache.valor;
 
-    const cliente = await primeira('clientes', { cpfCnpj: cnpj }, 'token,tipoIntegracao');
+    const cliente = await primeira('clientes', { cpfCnpj: cnpj }, 'token,tokenSandbox,tipoIntegracao');
     if (!cliente) throw erroConfig('CLIENTE_NAO_CADASTRADO');
     const tipo = txt(cliente.tipoIntegracao) || 'producao';
 
@@ -65,7 +66,8 @@ export function credenciaisDoSupabase(op: OpcoesSupabase): FonteCredenciais {
 
     const valor: CredenciaisSankhya = {
       baseUrl: txt(app.urlBase),
-      xToken: txt(cliente.token),
+      // Ambiente de teste usa o X-Token do sandbox quando houver (regra do app e do Stok).
+      xToken: tipo !== 'producao' && txt(cliente.tokenSandbox) ? txt(cliente.tokenSandbox) : txt(cliente.token),
       clientId: txt(app.clienteId),
       clientSecret: txt(app.clienteSecret),
     };
