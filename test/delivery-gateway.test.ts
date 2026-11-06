@@ -156,3 +156,24 @@ test('avisos e registro do aparelho para push passam pelo gateway', () => {
     assert.ok(LIBERADOS.has(nome), nome);
   }
 });
+
+test('a viagem passa pelo gateway; reabrir prestação e consultas da torre ficam fora', () => {
+  for (const nome of [
+    'LoopDeliveryConsultaSP.doExecutar',
+    'LoopDeliveryEntregaAppSP.doAppRegistrarEvento',
+    'LoopDeliveryTrackingSP.doRegistrarPosicoes',
+    'LoopDeliveryAnexoNotaSP.doAnexarArquivo',
+    'LoopDeliveryAdiantamentoSP.doListarAdiantamentos',
+    'LoopDeliveryChecklistSP.doAppPanico',
+  ]) {
+    assert.ok(LIBERADOS.has(nome), nome);
+  }
+  for (const nome of [
+    'LoopDeliveryAdiantamentoSP.doReabrirPrestacaoDespesa',
+    'LoopDeliveryAdiantamentoSP.doAprovarAdiantamento',
+    'LoopDeliveryTrackingSP.doConsultarTorreOperacao',
+    'LoopDeliveryAnexoNotaSP.doObterAnexo',
+  ]) {
+    assert.ok(!LIBERADOS.has(nome), nome);
+  }
+});
