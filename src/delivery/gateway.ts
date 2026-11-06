@@ -30,6 +30,14 @@ export const LIBERADOS: ReadonlySet<string> = new Set([
   'LoopDeliveryMotoristaSP.doMeusDados',
   'LoopDeliveryMotoristaSP.doMeuVeiculo',
   'LoopDeliveryMotoristaSP.doSalvarMinhaFoto',
+  // Avisos e push: o Add-on identifica o motorista pelo sessaoToken (codUsu do corpo é ignorado)
+  'LoopDeliveryMensagensSP.doInbox',
+  'LoopDeliveryMensagensSP.doContador',
+  'LoopDeliveryMensagensSP.doDetalhe',
+  'LoopDeliveryMensagensSP.doMarcarLida',
+  'LoopDeliveryMensagensSP.doMarcarTodasLidas',
+  'LoopDeliveryMensagensSP.doRegistrarDispositivo',
+  'LoopDeliveryMensagensSP.doDesativarDispositivo',
 ]);
 
 const PERFIL: PerfilApp = {

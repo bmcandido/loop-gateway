@@ -145,3 +145,14 @@ test('a rota usa o nome da função', async () => {
   );
   assert.equal(r.status, 200);
 });
+
+test('avisos e registro do aparelho para push passam pelo gateway', () => {
+  for (const nome of [
+    'LoopDeliveryMensagensSP.doInbox',
+    'LoopDeliveryMensagensSP.doContador',
+    'LoopDeliveryMensagensSP.doRegistrarDispositivo',
+    'LoopDeliveryMensagensSP.doDesativarDispositivo',
+  ]) {
+    assert.ok(LIBERADOS.has(nome), nome);
+  }
+});
