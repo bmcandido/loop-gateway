@@ -44,6 +44,7 @@ export const LIBERADOS: ReadonlySet<string> = new Set([
   'LoopDeliveryAnexoNotaSP.doListarAnexos',
   'LoopDeliveryGeocodificacaoSP.doGarantirCoordenadas',
   'LoopDeliveryFormacaoCargasSP.doRevisaoApp',
+  'LoopDeliveryFormacaoCargasSP.doMapaCargaApp',
   'LoopDeliveryFormacaoCargasSP.doResponderRevisao',
   'LoopDeliveryAdiantamentoSP.doSolicitarAdiantamento',
   'LoopDeliveryAdiantamentoSP.doListarAdiantamentos',

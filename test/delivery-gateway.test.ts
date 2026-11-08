@@ -166,6 +166,7 @@ test('a viagem passa pelo gateway; reabrir prestação e consultas da torre fica
     'LoopDeliveryAdiantamentoSP.doListarAdiantamentos',
     'LoopDeliveryChecklistSP.doAppPanico',
     'LoopDeliveryDespesaAppSP.doEnviar',
+    'LoopDeliveryFormacaoCargasSP.doMapaCargaApp',
   ]) {
     assert.ok(LIBERADOS.has(nome), nome);
   }
