@@ -94,6 +94,8 @@ export const LIBERADOS: ReadonlySet<string> = new Set([
   // Despesas da viagem: nota/título, confirmação e comprovante no servidor, idempotente pelo id da despesa
   'LoopDeliveryDespesaAppSP.doEnviar',
   'LoopDeliveryDespesaAppSP.doConfirmarNota',
+  // WhatsApp ao cliente (link de pagamento, nota em PDF): o Add-on confere o cliente da carga e repassa ao Hub
+  'LoopDeliveryWhatsappSP.doEnviar',
   // LoopSign (sessão confere a nota do motorista; o token não vai ao LoopSign)
   'LoopDeliveryConfigSP.doCriarSessaoLoopSign',
   'LoopDeliverySignWebhookSP.doConsultarStatusAnexoPorNota',
