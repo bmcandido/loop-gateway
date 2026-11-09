@@ -80,6 +80,11 @@ export const LIBERADOS: ReadonlySet<string> = new Set([
   'LoopDeliveryPneusSP.doAppMapaViagem',
   'LoopDeliveryPneusSP.doAppChecagem',
   'LoopDeliveryPneusSP.doAppMedir',
+  // Mecânico (usuário da Oficina): mapa do veículo da OS, pneus em estoque, troca e retirada
+  'LoopDeliveryPneusSP.doAppMapa',
+  'LoopDeliveryPneusSP.doAppPneus',
+  'LoopDeliveryPneusSP.doAppMovimentar',
+  'LoopDeliveryPneusSP.doAppPneu',
   // Carregamento e conferência (carregador pelo token, permissão por empresa)
   'LoopDeliveryFormacaoCargasSP.doPerfilCarregamento',
   'LoopDeliveryFormacaoCargasSP.doOrdensParaCarregar',
