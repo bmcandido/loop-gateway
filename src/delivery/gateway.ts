@@ -118,6 +118,9 @@ export const LIBERADOS: ReadonlySet<string> = new Set([
   // Mudanca de posicao no bau (pedido e autorizacao do conferente; permissao por empresa no Add-on)
   'LoopDeliveryFormacaoCargasSP.doAjustarPosicaoCarga',
   'LoopDeliveryFormacaoCargasSP.doDecidirPosicaoCarga',
+  // Montagem 2.5D do bau: consulta e ajuste do carregador na doca (permissao CARREGAR por empresa no Add-on)
+  'LoopDeliveryFormacaoCargasSP.doLayoutBau',
+  'LoopDeliveryFormacaoCargasSP.doSalvarLayoutBau',
   // Despesas da viagem: nota/título, confirmação e comprovante no servidor, idempotente pelo id da despesa
   'LoopDeliveryDespesaAppSP.doEnviar',
   'LoopDeliveryDespesaAppSP.doConfirmarNota',
