@@ -54,6 +54,8 @@ export const LIBERADOS: ReadonlySet<string> = new Set([
   'LoopDeliveryEntregaAppSP.doAppAnexar',
   'LoopDeliveryEntregaAppSP.doAppRecebimento',
   'LoopDeliveryEntregaAppSP.doAppFaturarDevolucao',
+  // Nota de faturamento da conferencia (produto incluido ou a mais): TOP e cliente decididos no Add-on, idempotente por UUID
+  'LoopDeliveryEntregaAppSP.doAppIncluirNotaConferencia',
   // Prestação de contas da viagem (reabrir é da gestão e fica fora)
   'LoopDeliveryAdiantamentoSP.doConsultarPrestacaoDespesa',
   'LoopDeliveryAdiantamentoSP.doIniciarEnvioPrestacao',
