@@ -45,6 +45,7 @@ export const LIBERADOS: ReadonlySet<string> = new Set([
   'LoopDeliveryGeocodificacaoSP.doGarantirCoordenadas',
   'LoopDeliveryFormacaoCargasSP.doRevisaoApp',
   'LoopDeliveryFormacaoCargasSP.doMapaCargaApp',
+  'LoopDeliveryFormacaoCargasSP.doPosicaoCargaApp',
   'LoopDeliveryFormacaoCargasSP.doResponderRevisao',
   'LoopDeliveryAdiantamentoSP.doSolicitarAdiantamento',
   'LoopDeliveryAdiantamentoSP.doListarAdiantamentos',
@@ -85,6 +86,21 @@ export const LIBERADOS: ReadonlySet<string> = new Set([
   'LoopDeliveryPneusSP.doAppPneus',
   'LoopDeliveryPneusSP.doAppMovimentar',
   'LoopDeliveryPneusSP.doAppPneu',
+  // Oficina (técnico, almoxarife, totem): o Add-on identifica o usuário pelo sessaoToken (e-mail do operador da
+  // oficina -> usuário do Sankhya) e confere a função e a oficina de cada ação
+  'LoopDeliveryOficinaSP.doAppPerfil',
+  'LoopDeliveryOficinaSP.doAppTarefas',
+  'LoopDeliveryOficinaSP.doAppTarefa',
+  'LoopDeliveryOficinaSP.doAppApontar',
+  'LoopDeliveryOficinaSP.doAppBuscar',
+  'LoopDeliveryOficinaSP.doAppAbrirOs',
+  'LoopDeliveryOficinaSP.doAppImprimirOs',
+  'LoopDeliveryOficinaSP.doAppAlmoxarifado',
+  'LoopDeliveryOficinaSP.doAppCracha',
+  'LoopDeliveryOficinaSP.doAppEntregar',
+  'LoopDeliveryOficinaSP.doAppReceberDevolucao',
+  'LoopDeliveryOficinaSP.doTotemEntrar',
+  'LoopDeliveryOficinaSP.doTotemSair',
   // Carregamento e conferência (carregador pelo token, permissão por empresa)
   'LoopDeliveryFormacaoCargasSP.doPerfilCarregamento',
   'LoopDeliveryFormacaoCargasSP.doOrdensParaCarregar',
@@ -96,6 +112,12 @@ export const LIBERADOS: ReadonlySet<string> = new Set([
   'LoopDeliveryFormacaoCargasSP.doConferencia',
   'LoopDeliveryFormacaoCargasSP.doDecidirDivergencia',
   'LoopDeliveryFormacaoCargasSP.doConcluirConferencia',
+  // Doca pelo app (motorista na doca) e mapa das docas: carregador pelo token, permissao por empresa
+  'LoopDeliveryFormacaoCargasSP.doNaDocaCarregamento',
+  'LoopDeliveryFormacaoCargasSP.doDocasCarregamento',
+  // Mudanca de posicao no bau (pedido e autorizacao do conferente; permissao por empresa no Add-on)
+  'LoopDeliveryFormacaoCargasSP.doAjustarPosicaoCarga',
+  'LoopDeliveryFormacaoCargasSP.doDecidirPosicaoCarga',
   // Despesas da viagem: nota/título, confirmação e comprovante no servidor, idempotente pelo id da despesa
   'LoopDeliveryDespesaAppSP.doEnviar',
   'LoopDeliveryDespesaAppSP.doConfirmarNota',
