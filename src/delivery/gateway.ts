@@ -116,6 +116,8 @@ export const LIBERADOS: ReadonlySet<string> = new Set([
   'LoopDeliveryFormacaoCargasSP.doConcluirConferencia',
   // Doca pelo app (motorista na doca) e mapa das docas: carregador pelo token, permissao por empresa
   'LoopDeliveryFormacaoCargasSP.doNaDocaCarregamento',
+  // Chamar o motorista para a doca pelo app (como o Chamar da Portaria)
+  'LoopDeliveryFormacaoCargasSP.doChamarCarregamento',
   'LoopDeliveryFormacaoCargasSP.doDocasCarregamento',
   // Mudanca de posicao no bau (pedido e autorizacao do conferente; permissao por empresa no Add-on)
   'LoopDeliveryFormacaoCargasSP.doAjustarPosicaoCarga',
