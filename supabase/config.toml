@@ -13,6 +13,10 @@ import_map = "./functions/expense-gateway/deno.json"
 verify_jwt = false
 import_map = "./functions/producao-gateway/deno.json"
 
+[functions.check-gateway]
+verify_jwt = false
+import_map = "./functions/check-gateway/deno.json"
+
 [functions.delivery-gateway]
 verify_jwt = false
 import_map = "./functions/delivery-gateway/deno.json"
