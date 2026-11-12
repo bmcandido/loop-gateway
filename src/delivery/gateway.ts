@@ -51,6 +51,7 @@ export const LIBERADOS: ReadonlySet<string> = new Set([
   'LoopDeliveryAdiantamentoSP.doListarAdiantamentos',
   // Fila da entrega (status, conferência, recebedor, anexo, recebimento e devolução), idempotente
   'LoopDeliveryEntregaAppSP.doAppRegistrarEvento',
+  'LoopDeliveryEntregaAppSP.doAppConferenciaLote',
   'LoopDeliveryEntregaAppSP.doAppAnexar',
   'LoopDeliveryEntregaAppSP.doAppRecebimento',
   'LoopDeliveryEntregaAppSP.doAppFaturarDevolucao',
