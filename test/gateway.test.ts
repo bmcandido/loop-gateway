@@ -243,6 +243,70 @@ test('sem licença no cabeçalho (ou licença inválida) nada passa', async () =
   assert.equal(chamadas.length, 0);
 });
 
+test('app nativo: sem licença de site e com login, o cliente é o da conta (lido no servidor)', async () => {
+  const conferidos: string[] = [];
+  const lidos: string[] = [];
+  const { deps, chamadas, cnpjs, eventos } = montar({
+    licenca: async (c, produto) => void conferidos.push(`${c}|${produto}`),
+    cnpjDoUsuario: async (uid) => {
+      lidos.push(uid);
+      return '26.314.062/0001-61';
+    },
+  });
+  const r = await processar(servico('LoopPortalSacSP.consultarSac', {}, `Bearer ${TOKEN_OK}`, null), deps);
+  assert.equal(r.status, 200);
+  assert.deepEqual(lidos, ['uidTeste123']);
+  assert.deepEqual(conferidos, [`${CNPJ_B}|LoopPortal`]);
+  assert.deepEqual(cnpjs, [CNPJ_B]);
+  assert.equal((chamadas[0].body._portalAuth as { cnpj: string }).cnpj, CNPJ_B);
+  assert.equal(eventos.at(-1)!.cnpj, CNPJ_B);
+});
+
+test('app nativo: com a licença do site no cabeçalho, ela continua valendo (conta não é lida)', async () => {
+  let lido = false;
+  const { deps, cnpjs } = montar({
+    cnpjDoUsuario: async () => {
+      lido = true;
+      return CNPJ_B;
+    },
+  });
+  await processar(servico('LoopPortalSacSP.consultarSac', {}, `Bearer ${TOKEN_OK}`, 'LIC-A'), deps);
+  assert.equal(lido, false);
+  assert.deepEqual(cnpjs, [CNPJ_A]);
+});
+
+test('app nativo: conta sem empresa, token inválido ou licença inativa não chegam ao Sankhya', async () => {
+  const semEmpresa = montar({ cnpjDoUsuario: async () => undefined });
+  const r1 = await processar(servico('LoopPortalSacSP.consultarSac', {}, `Bearer ${TOKEN_OK}`, null), semEmpresa.deps);
+  assert.equal(r1.status, 403);
+  assert.equal((r1.corpo as { codigoGateway: string }).codigoGateway, 'USUARIO_SEM_EMPRESA');
+  assert.equal(semEmpresa.chamadas.length, 0);
+
+  const tokenRuim = montar({ cnpjDoUsuario: async () => CNPJ_A });
+  const r2 = await processar(servico('LoopPortalSacSP.consultarSac', {}, 'Bearer token-forjado-0000000000000', null), tokenRuim.deps);
+  assert.equal(r2.status, 401);
+  assert.equal(tokenRuim.chamadas.length, 0);
+
+  const inativa = montar({
+    cnpjDoUsuario: async () => CNPJ_A,
+    licenca: async () => {
+      throw new ErroGateway(403, 'LICENCA_INATIVA', 'Sem licença ativa.');
+    },
+  });
+  const r3 = await processar(servico('LoopPortalSacSP.consultarSac', {}, `Bearer ${TOKEN_OK}`, null), inativa.deps);
+  assert.equal(r3.status, 403);
+  assert.equal((r3.corpo as { codigoGateway: string }).codigoGateway, 'LICENCA_INATIVA');
+  assert.equal(inativa.chamadas.length, 0);
+});
+
+test('sem licença de site e sem login continua recusado, mesmo com a leitura da conta disponível', async () => {
+  const { deps, chamadas } = montar({ cnpjDoUsuario: async () => CNPJ_A });
+  const r = await processar(servico('LoopEcommerceConfigSP.doLojaPublica', {}, undefined, null), deps);
+  assert.equal(r.status, 401);
+  assert.equal((r.corpo as { codigoGateway: string }).codigoGateway, 'LICENCA_AUSENTE');
+  assert.equal(chamadas.length, 0);
+});
+
 test('gateway único: o cliente vem da licença (Sankhya, licença e identidade do CNPJ certo)', async () => {
   const conferidos: string[] = [];
   const { deps, chamadas, cnpjs, eventos } = montar({ licenca: async (c) => void conferidos.push(c) });

@@ -5,6 +5,7 @@ import { validadorPeloAuth } from '../auth/supabase-auth.ts';
 import { assinadorV2, chavePrivadaGateway, type AssinadorIdentidade } from '../core/assinatura.ts';
 import { credenciaisDoSupabase } from '../core/credenciais.ts';
 import { type DependenciasGateway, desembrulhar, processar } from '../core/gateway.ts';
+import { cnpjDoUsuarioNoSupabase } from '../core/gateway-app.ts';
 import { type ChaveLicenca, verificadorPorProduto } from '../core/licenca-app.ts';
 import { licencaDoSupabase } from '../core/licenca.ts';
 import { assinarEntrega, chaveDoSupabase, type ConfigLoopApi, limiteDeEntrega, processarLoopApi } from '../core/loopapi.ts';
@@ -37,7 +38,7 @@ export interface ConfigGateway {
   /** Só testes: chaves públicas de licença (padrão: as de produção). */
   chavesLicenca?: ChaveLicenca[];
   /** Só testes: troca validador/Sankhya. */
-  sobrescrever?: Partial<Pick<DependenciasGateway, 'validador' | 'sankhya' | 'licenca'>>;
+  sobrescrever?: Partial<Pick<DependenciasGateway, 'validador' | 'sankhya' | 'licenca' | 'cnpjDoUsuario'>>;
 }
 
 export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Response> {
@@ -61,6 +62,8 @@ export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Resp
   const vendedorAtivo = vendedorPorEmail((cnpj) => sankhya(cnpj));
   const jwsDoDominio = jwsDoDominioNoSupabase(supabase);
   const codEmpDoCliente = codEmpDoClienteNoSupabase(supabase);
+  // App nativo (sem licença de site): a empresa sai da conta do login, lida no servidor.
+  const cnpjDoUsuario = cnpjDoUsuarioNoSupabase(supabase);
   const origens = (cfg.origensWeb ?? []).filter(Boolean);
   let assinar: Promise<AssinadorIdentidade> | undefined;
   const chaveLoopApi = chaveDoSupabase(supabase);
@@ -153,6 +156,7 @@ export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Resp
         licencaDoApp,
         jwsDoDominio,
         codEmpDoCliente,
+        cnpjDoUsuario,
         licenca: (cnpj, produto = 'LoopPortal') => licenca(`${cnpj}|${produto}`)(),
         sankhya,
         assinar: assinador,

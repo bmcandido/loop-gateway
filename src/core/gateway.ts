@@ -31,6 +31,12 @@ export interface DependenciasGateway {
   exigeEmailConfirmado?: (cnpj: string, produto?: ProdutoGateway) => Promise<boolean>;
   /** O e-mail é de um vendedor ativo no Sankhya do cliente? */
   vendedorAtivo?: (cnpj: string, email: string) => Promise<boolean>;
+  /**
+   * CNPJ da empresa da conta, lido no servidor (`usuarios`). App nativo (Android/iOS) não tem
+   * domínio nem licença de site: com login válido e sem X-Loop-Licenca, o cliente é o da conta,
+   * como nos gateways de app (Stok, Expense). Ausente = só vale a licença do site.
+   */
+  cnpjDoUsuario?: (uid: string) => Promise<string | undefined>;
   /** Empresa principal do cliente (rota /icone/ecommerce). */
   codEmpDoCliente?: (cnpj: string) => Promise<number | null>;
   /** JWS da licença do domínio do site (rota /icone). */
@@ -100,8 +106,25 @@ async function servico(req: Requisicao, deps: DependenciasGateway, evento: Event
   if (!regra) {
     throw new ErroGateway(403, 'SERVICO_NAO_PERMITIDO', 'Serviço não disponível para o portal.');
   }
-  // O cliente é o da licença assinada; licença inativa: nada passa, nem os serviços públicos.
-  const { cnpj } = await deps.licencaDoApp(req.licenca, regra.produto);
+  // O cliente é o da licença assinada do site. App nativo (sem licença de site) com login: o da
+  // conta, lido no servidor; nunca um CNPJ informado pelo app. Licença inativa: nada passa, nem os
+  // serviços públicos. Sem licença e sem login: recusado como antes (LICENCA_AUSENTE).
+  let usuario: UsuarioAutenticado | undefined;
+  let cnpj: string;
+  if (!req.licenca && req.authorization && deps.cnpjDoUsuario) {
+    // Token inválido é recusado: não tratamos como visitante.
+    usuario = await autenticar(req.authorization, deps.validador);
+    if (!usuario) {
+      throw new ErroGateway(401, 'LOGIN_NECESSARIO', 'Sessão expirada. Entre novamente.');
+    }
+    cnpj = ((await deps.cnpjDoUsuario(usuario.uid)) ?? '').replace(/\D/g, '');
+    if (cnpj.length !== 14) {
+      evento.uid = usuario.uid;
+      throw new ErroGateway(403, 'USUARIO_SEM_EMPRESA', 'Sua conta não está ligada a uma empresa. Procure o administrador.');
+    }
+  } else {
+    ({ cnpj } = await deps.licencaDoApp(req.licenca, regra.produto));
+  }
   evento.cnpj = cnpj;
   await deps.licenca(cnpj, regra.produto);
   const requestBody = corpo?.requestBody === undefined ? {} : objeto(corpo.requestBody);
@@ -110,7 +133,7 @@ async function servico(req: Requisicao, deps: DependenciasGateway, evento: Event
   }
 
   // Token inválido é recusado mesmo em serviço público: não tratamos como visitante.
-  const usuario = await autenticar(req.authorization, deps.validador);
+  usuario ??= await autenticar(req.authorization, deps.validador);
   if (regra.acesso !== 'PUBLICO' && !usuario) {
     throw new ErroGateway(401, 'LOGIN_NECESSARIO', 'Sessão expirada. Entre novamente.');
   }
