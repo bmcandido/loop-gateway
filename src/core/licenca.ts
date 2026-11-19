@@ -64,7 +64,10 @@ export function licencaDoSupabase(op: OpcoesLicenca): VerificadorLicenca {
     const r = await http(`${base}/rpc/licenca_status`, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ p_cnpj: cnpj, p_produto: produto }),
+      // p_origem registra o uso em "LOOP".loop_licenca_consultas (V20261117_237): a tela Gestão de Clientes ›
+      // Licenças mostra o último contato do gateway por cliente e módulo. Publicar só depois da migration:
+      // sem ela, a RPC antiga não aceita o parâmetro (404) e o gateway cai na leitura das tabelas.
+      body: JSON.stringify({ p_cnpj: cnpj, p_produto: produto, p_origem: 'gateway' }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (r.status === 404) {

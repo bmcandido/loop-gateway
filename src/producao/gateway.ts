@@ -24,6 +24,10 @@ const LIBERADOS = new Set([
   'LoopProducaoExecucaoSP.doRegistrar',
   'LoopProducaoFilaSP.doListar',
   'LoopProducaoFilaSP.doResumo',
+  'LoopProducaoLancamentoSP.doLancar',
+  'LoopProducaoLancamentoSP.doProdutos',
+  'LoopProducaoMaterialSP.doMateriaisOp',
+  'LoopProducaoMaterialSP.doTransferir',
   'LoopProducaoUsuariosSP.doBuscarFoto',
   'LoopProducaoUsuariosSP.doMeuCadastro',
 ]);

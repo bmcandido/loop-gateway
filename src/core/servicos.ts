@@ -118,6 +118,10 @@ export const SERVICOS: Readonly<Record<string, RegraServico>> = Object.freeze({
   'LoopPortalSacSP.abrirSac': usuario(),
   'LoopPortalSacSP.responderSac': usuario(),
   'LoopPortalSacSP.encerrarSac': usuario(),
+  // Anexos do chamado: o add-on confere o dono do SAC, o tipo pelo conteúdo e o tamanho.
+  'LoopPortalSacSP.anexarArquivo': usuario(),
+  'LoopPortalSacSP.consultarAnexos': usuario(),
+  'LoopPortalSacSP.baixarAnexo': usuario(),
 
   // Campanhas e renegociação
   'LoopPortalCampanhaSP.doConsultarCampanhas': usuario(),
@@ -135,12 +139,20 @@ export const SERVICOS: Readonly<Record<string, RegraServico>> = Object.freeze({
   'LoopPortalPagamentoSP.consultarPagamentos': usuario(),
   'LoopPortalPagamentoSP.enviarComprovante': usuario(),
   'LoopPortalPagamentoSP.processarCartao': usuario(),
+  // Situação do último pagamento com cartão do título (concilia o que ficou sem resposta).
+  'LoopPortalPagamentoSP.consultarCartao': usuario(),
+  // PIX Itaú por QR Code: o add-on cria e consulta a cobrança no banco (mTLS).
+  'LoopPortalPagamentoSP.gerarPix': usuario(),
+  'LoopPortalPagamentoSP.consultarPix': usuario(),
 
   // Documentos (boleto, nota, recibos, relatórios): o PDF volta na resposta.
   'LoopPortalDocumentoSP.gerar': usuario(),
   // Relatórios cadastrados no portal, já filtrados pelo perfil (sem o arquivo do relatório).
   'LoopPortalDocumentoSP.relatorios': usuario(),
   'LoopPortalDocumentoSP.pesquisarLookup': usuario(),
+  // Declaração anual de quitação e demonstrativo de repasse: o add-on decide títulos e perfil.
+  'LoopPortalDocumentoSP.declaracaoQuitacao': usuario(),
+  'LoopPortalDocumentoSP.demonstrativoRepasse': usuario(),
 });
 
 const vendedor = (modulo: ModuloSankhya, ocultar?: readonly string[], conferir?: RegraServico['conferir']): RegraServico => ({
@@ -200,6 +212,37 @@ const METODOS_VENDEDOR: ReadonlySet<string> = new Set([
   'LoopEcommerceEmailSP.doEnviarPedido',
   'LoopEcommerceEmpresasSP.doConsultarEmpresaConfig',
   'LoopEcommerceGoogleMapsSP.doGeocodificar',
+  // Roteiro da Agenda: coordenadas do parceiro (o Add-on confere sessao e Somente Clientes Vinculados).
+  'LoopEcommerceGeocodificacaoSP.doGarantirCoordenadas',
+  // PDV embarcado: o Add-on confere sessao, perfil caixa/gerente_loja e o terminal pareado (deviceId).
+  'LoopEcommercePdvSP.doContexto',
+  'LoopEcommercePdvSP.doGerarPareamento',
+  'LoopEcommercePdvSP.doParearTerminal',
+  'LoopEcommercePdvSP.doProdutos',
+  'LoopEcommercePdvSP.doAbrirCaixa',
+  'LoopEcommercePdvSP.doMovimento',
+  'LoopEcommercePdvSP.doRegistrarVenda',
+  'LoopEcommercePdvSP.doStatusFiscal',
+  'LoopEcommercePdvSP.doCancelarVenda',
+  'LoopEcommercePdvSP.doFecharCaixa',
+  'LoopEcommercePdvSP.doResumoCaixa',
+  'LoopEcommercePdvSP.doSaudeFiscal',
+  'LoopEcommercePdvSP.doReabrirCaixa',
+  // M24: perfis do usuário (vendedor, televendas, promotor, gestor) e os módulos de cada um.
+  'LoopEcommercePerfisAppSP.doMeusPerfis',
+  // M03: crédito do cliente (o Add-on confere vínculo e o parâmetro da empresa).
+  'LoopEcommerceCreditoClienteSP.doConsultar',
+  // M20/M04: perfil comercial do vendedor e liberação de desconto (o Add-on confere vendedor e gestor).
+  'LoopEcommercePerfilComercialSP.doMeuPerfil',
+  'LoopEcommerceLiberacoesSP.doSolicitar',
+  'LoopEcommerceLiberacoesSP.doPendentes',
+  'LoopEcommerceLiberacoesSP.doDetalhe',
+  'LoopEcommerceLiberacoesSP.doDecidir',
+  // "Minhas liberações" do vendedor e M18: tributos do pedido como o Sankhya gravou (escopo no Add-on)
+  'LoopEcommerceLiberacoesSP.doMinhas',
+  'LoopEcommerceTributosPedidoSP.doConsultar',
+  // M18: simulação de impostos (nota temporária gravada e excluída pelo Add-on; escopo no Add-on)
+  'LoopEcommerceTributosPedidoSP.doSimular',
   'LoopEcommerceAgendaSP.doContexto',
   'LoopEcommerceAgendaSP.doConectar',
   'LoopEcommerceAgendaSP.doConcluirConexao',

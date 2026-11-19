@@ -244,3 +244,19 @@ test('ícone do Link vem do Add-on dele, sem exigir token de link', () => {
   assert.equal(regra?.produto, 'LoopPaymentLink');
   assert.equal(regra?.conferir, undefined);
 });
+
+
+test('M18: consultar e simular impostos do pedido passam só para o vendedor logado, no contexto do Add-on', async () => {
+  for (const s of ['LoopEcommerceTributosPedidoSP.doConsultar', 'LoopEcommerceTributosPedidoSP.doSimular']) {
+    const regra = regraDoServico(s);
+    assert.ok(regra, s);
+    assert.equal(regra?.acesso, regraDoServico('LoopEcommerceLiberacoesSP.doMinhas')?.acesso, s);
+    assert.equal(regra?.modulo, regraDoServico('LoopEcommerceLiberacoesSP.doMinhas')?.modulo, s);
+  }
+  assert.equal(regraDoServico('LoopEcommerceTributosPedidoSP.doExcluir'), undefined);
+  const { deps, chamadas } = montar(['LoopEcommerce']);
+  assert.equal((await pedir('LoopEcommerceTributosPedidoSP.doSimular', deps)).status, 401);
+  assert.equal(chamadas.length, 0);
+  const dentro = comVendedor(true);
+  assert.equal((await logado('LoopEcommerceTributosPedidoSP.doSimular', dentro.deps, { codEmp: 1, anos: [2026] })).status, 200);
+});

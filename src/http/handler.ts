@@ -48,7 +48,9 @@ export function criarHandler(cfg: ConfigGateway): (req: Request) => Promise<Resp
     const [cnpj, produto] = chave.split('|');
     return licencaDoSupabase({ ...supabase, cnpj, produto });
   });
-  const sankhya = porCliente((cnpj) => new SankhyaCliente(credenciaisDoSupabase({ ...supabase, cnpj })));
+  // 90s como nos gateways de delivery/produção: faturar vários pedidos passa
+  // dos 25s padrão, e o corte no meio deixava a nota feita sem resposta.
+  const sankhya = porCliente((cnpj) => new SankhyaCliente(credenciaisDoSupabase({ ...supabase, cnpj }), { timeoutMs: 90_000 }));
   const projetos = (cfg.projetosFirebase ?? []).filter(Boolean);
   // A confirmação de e-mail é decidida por cliente em processar(), com a configuração do Add-on.
   const validador: ValidadorToken = validadorCombinado(
