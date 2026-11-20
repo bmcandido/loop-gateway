@@ -228,6 +228,12 @@ const METODOS_VENDEDOR: ReadonlySet<string> = new Set([
   'LoopEcommercePdvSP.doResumoCaixa',
   'LoopEcommercePdvSP.doSaudeFiscal',
   'LoopEcommercePdvSP.doReabrirCaixa',
+  // E3: caixa do vendedor externo e baixa do título (o Add-on confere vendedor, caixa aberto e idLocal).
+  'LoopEcommerceCaixaExternoSP.doCaixa',
+  'LoopEcommerceCaixaExternoSP.doAbrirCaixa',
+  'LoopEcommerceCaixaExternoSP.doReceber',
+  'LoopEcommerceCaixaExternoSP.doMovimento',
+  'LoopEcommerceCaixaExternoSP.doFecharCaixa',
   // M24: perfis do usuário (vendedor, televendas, promotor, gestor) e os módulos de cada um.
   'LoopEcommercePerfisAppSP.doMeusPerfis',
   // M03: crédito do cliente (o Add-on confere vínculo e o parâmetro da empresa).
