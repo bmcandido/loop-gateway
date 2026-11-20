@@ -204,5 +204,6 @@ function respostaDeErro(e: unknown, evento: EventoGateway): RespostaGateway {
   const erro =
     e instanceof ErroGateway ? e : new ErroGateway(500, 'ERRO_INTERNO', 'Não foi possível concluir a operação. Tente novamente.');
   evento.codigo = erro.codigo;
+  if (erro.detalhe && !evento.detalhe) evento.detalhe = erro.detalhe;
   return { status: erro.status, corpo: { status: '0', statusMessage: erro.message, codigoGateway: erro.codigo } };
 }

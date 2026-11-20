@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { type DependenciasGateway, processar } from '../src/core/gateway.ts';
 import { verificadorPorProduto } from '../src/core/licenca-app.ts';
 import { ErroGateway } from '../src/core/tipos.ts';
-import { vendedorPorEmail } from '../src/core/vendedor.ts';
+import { motivoSankhya, vendedorPorEmail } from '../src/core/vendedor.ts';
 import { regraDoServico } from '../src/core/servicos.ts';
 import { LICENCA_TESTE, licencaDe } from './fixtures.ts';
 
@@ -259,4 +259,28 @@ test('M18: consultar e simular impostos do pedido passam só para o vendedor log
   assert.equal(chamadas.length, 0);
   const dentro = comVendedor(true);
   assert.equal((await logado('LoopEcommerceTributosPedidoSP.doSimular', dentro.deps, { codEmp: 1, anos: [2026] })).status, 200);
+});
+
+test('conferência do vendedor: chamadas juntas dividem a consulta e falha passageira tenta de novo', async () => {
+  let consultas = 0;
+  const respostas: unknown[] = [{ status: '0', statusMessage: 'falha passageira' }, { status: '1', responseBody: { rows: [[1]] } }];
+  const consulta = vendedorPorEmail(() => ({
+    chamar: async () => { consultas++; await new Promise((r) => setTimeout(r, 5)); return respostas.shift() ?? { status: '1', responseBody: { rows: [[1]] } }; },
+  }) as never);
+  const juntas = await Promise.all([consulta(CNPJ, 'v@b.com'), consulta(CNPJ, 'v@b.com'), consulta(CNPJ, 'V@B.COM')]);
+  assert.deepEqual(juntas, [true, true, true]);
+  assert.equal(consultas, 2, 'uma consulta compartilhada, com uma nova tentativa');
+});
+
+test('conferência do vendedor: erro do Sankhya vai para o log sem e-mail nem trecho do SQL', async () => {
+  const consulta = vendedorPorEmail(() => ({
+    chamar: async () => ({ status: '0', statusMessage: "ORA-00904: \"US\".\"EMAIL\": invalid identifier WHERE 'FULANO@X.COM' IN" }),
+  }) as never);
+  await assert.rejects(consulta(CNPJ, 'fulano@x.com'), (e: ErroGateway) => {
+    assert.equal(e.codigo, 'VENDEDOR_INDISPONIVEL');
+    assert.match(e.detalhe ?? '', /ORA-00904/);
+    assert.doesNotMatch(e.detalhe ?? '', /FULANO|fulano/i);
+    return true;
+  });
+  assert.equal(motivoSankhya({ status: '3' }), 'status 3');
 });

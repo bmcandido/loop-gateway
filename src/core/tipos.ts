@@ -68,6 +68,8 @@ export class ErroGateway extends Error {
     readonly status: number,
     readonly codigo: string,
     mensagem: string,
+    /** Motivo técnico só para o log (nunca vai ao app). */
+    readonly detalhe?: string,
   ) {
     super(mensagem);
   }

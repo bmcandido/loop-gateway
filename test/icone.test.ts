@@ -111,3 +111,22 @@ test('ícone do e-commerce: logo da loja, com a licença do e-commerce e a empre
   assert.deepEqual(produtos, ['LoopEcommerce', 'LoopEcommerce']);
   assert.deepEqual(chamadas, [{ servico: 'LoopEcommerceConfigSP.doLojaPublica', modulo: 'loop-b2bb2c', corpo: { codEmp: 7 } }]);
 });
+
+test('ícone do e-commerce: favicon da Identidade Visual vem antes da logo', async () => {
+  const favicon = 'data:image/png;base64,FAVI';
+  const deps = {
+    validador: { validar: async () => { throw new Error('rota pública'); } },
+    assinar: async () => { throw new Error('rota pública'); },
+    jwsDoDominio: async () => 'JWS',
+    licencaDoApp: async () => ({ cnpj: '36841880000176' }),
+    licenca: async () => {},
+    codEmpDoCliente: async () => 7,
+    sankhya: () => ({
+      async chamar() {
+        return { status: '1', responseBody: { success: true, data: { logo: 'data:image/png;base64,LOGO', favicon } } };
+      },
+    }),
+  } as never;
+  const r = await processar({ metodo: 'POST', caminho: '/icone/ecommerce', corpo: { dominio: 'loja.exemplo.com.br' } }, deps);
+  assert.deepEqual(r.corpo, { imagem: favicon });
+});

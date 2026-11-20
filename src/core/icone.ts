@@ -89,8 +89,9 @@ export async function iconeDoDominio(
     const codEmp = await deps.codEmpDoCliente?.(cnpj);
     if (!codEmp) return { status: 200, corpo: { imagem: null }, cnpj };
     const loja = await dados('LoopEcommerceConfigSP.doLojaPublica', { codEmp });
-    const logo = loja?.logo;
-    return { status: 200, corpo: { imagem: typeof logo === 'string' && IMAGEM.test(logo) ? logo : null }, cnpj };
+    // Favicon da Identidade Visual (20/11/2026); sem ele, a logo da loja.
+    const imagem = [loja?.favicon, loja?.logo].find((v) => typeof v === 'string' && IMAGEM.test(v));
+    return { status: 200, corpo: { imagem: imagem ?? null }, cnpj };
   }
 
   if (produto === 'LoopPaymentLink') {
