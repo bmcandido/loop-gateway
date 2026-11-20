@@ -113,6 +113,20 @@ test('vários CNPJs: vale o maior vencimento entre os contratados', async () => 
   assert.equal(payload.dataExpiracao, '2027-05-01');
 });
 
+test('servidor com muitas empresas (60 CNPJs): consulta todos, em lotes, e libera pelo contratado', async () => {
+  // New Line (20/11/2026): TSIEMP com mais de 20 empresas recebia 400 e o add-on mostrava "Sem comunicação".
+  const muitos = Array.from({ length: 60 }, (_, i) => String(10000000000100 + i * 1000).padStart(14, '0'));
+  const { h, publica, sb } = await montar({ [muitos[42]]: { contratado: true, dataExpiracao: '2099-12-31' } });
+  const r = await h(pedido({ cnpjs: muitos, produto: 'LoopWhatsApp', nonce: NONCE }));
+  assert.equal(r.status, 200);
+  const { ok, payload } = await conferir(await r.text(), publica);
+  assert.ok(ok);
+  assert.equal(payload.contratado, true);
+  assert.equal(payload.dataExpiracao, '2099-12-31');
+  assert.equal(payload.cnpjs.length, 60);
+  assert.equal(sb.estado.corpos.length, 60);
+});
+
 test('sem contrato: responde assinado com contratado=false (o add-on decide a recusa)', async () => {
   const { h, publica } = await montar({ [A]: { contratado: false, dataExpiracao: '2027-01-10' } });
   const r = await h(pedido({ cnpjs: [A], produto: 'LoopPortal', nonce: NONCE }));
@@ -143,7 +157,7 @@ test('entrada inválida: 400', async () => {
     { cnpjs: ['123'], produto: 'LoopPortal', nonce: NONCE },
     { cnpjs: [A], produto: 'Loop Portal; drop', nonce: NONCE },
     { cnpjs: [A], produto: 'LoopPortal', nonce: 'curto' },
-    { cnpjs: Array.from({ length: 21 }, () => A), produto: 'LoopPortal', nonce: NONCE },
+    { cnpjs: Array.from({ length: 201 }, () => A), produto: 'LoopPortal', nonce: NONCE },
   ]) {
     const r = await h(pedido(corpo));
     assert.equal(r.status, 400, JSON.stringify(corpo));

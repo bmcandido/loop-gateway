@@ -24,7 +24,10 @@ export const TYP_LICENCA_STATUS = 'loop-licenca-status+jwt';
 /** Por quanto tempo a resposta assinada pode ser apresentada (o add-on guarda o OK por 5 min). */
 export const VALIDADE_RESPOSTA_SEG = 5 * 60;
 const TIMEOUT_MS = 15_000;
-const MAX_CNPJS = 20;
+/** Servidor Sankhya com muitas empresas (TSIEMP) manda todos os CNPJs: 20 barrava grupos grandes (20/11/2026). */
+const MAX_CNPJS = 200;
+/** Consultas ao Supabase em paralelo por pedido (um RPC por CNPJ). */
+const CONSULTAS_EM_PARALELO = 10;
 /** Um servidor consulta no máximo a cada 5 min por produto; 30/min por IP sobra para vários add-ons. */
 const LIMITE_POR_MINUTO = 30;
 /** Dados da Loop mudam raramente: uma leitura de public.loopapp a cada 10 min por instância basta. */
@@ -222,7 +225,11 @@ export function criarHandlerLicencaStatus(op: OpcoesLicencaStatus): (req: Reques
     const loop = lerDadosLoop();
     let respostas: { contratado: boolean; expira?: string }[];
     try {
-      respostas = await Promise.all(p.cnpjs.map((c) => situacao(c, p)));
+      respostas = [];
+      for (let i = 0; i < p.cnpjs.length; i += CONSULTAS_EM_PARALELO) {
+        const lote = p.cnpjs.slice(i, i + CONSULTAS_EM_PARALELO);
+        respostas.push(...(await Promise.all(lote.map((c) => situacao(c, p)))));
+      }
     } catch {
       return erro(new Recusa(503, 'LICENCA_INDISPONIVEL', 'Não foi possível consultar a licença agora.'));
     }
