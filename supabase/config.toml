@@ -20,3 +20,15 @@ import_map = "./functions/check-gateway/deno.json"
 [functions.delivery-gateway]
 verify_jwt = false
 import_map = "./functions/delivery-gateway/deno.json"
+
+[functions.acesso-admin]
+verify_jwt = false
+import_map = "./functions/acesso-admin/deno.json"
+
+[functions.acesso-qr]
+verify_jwt = false
+import_map = "./functions/acesso-qr/deno.json"
+
+[functions.acesso-contexto]
+verify_jwt = false
+import_map = "./functions/acesso-contexto/deno.json"
