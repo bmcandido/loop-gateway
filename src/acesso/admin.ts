@@ -12,6 +12,7 @@ import {
   senhaTemporaria,
   sha256Hex,
   soDigitos,
+  documentoValido,
   tokenAleatorio,
   type AppAddon,
   type OpcoesSupabase,
@@ -31,13 +32,15 @@ import {
 //   troca no primeiro acesso (trocar_senha) e a Central manda o e-mail de redefinição. Sem senha: convite da Central
 //   (código de 6 dígitos, digitado no app em "Primeiro acesso").
 // E-mails (convite e redefinição) saem pela Central de Acesso Loop (loop-acess, API de serviço com a mesma chave).
-//   acao: listar | cadastrar | reenviar_convite | redefinir_senha | senha_temporaria | gerar_qr | inativar |
+//   acao: listar | cadastrar | reenviar_convite | redefinir_senha | senha_temporaria | gerar_qr | enviar_qr | inativar |
 //         reativar | excluir
 // Resposta: { ok, codigo, mensagem?, ... }. Códigos de recusa: CHAVE_INVALIDA (401), CHAVE_PENDENTE (423),
 //   FORA_DO_CLIENTE (403), NAO_ENCONTRADO (404), LIMITE_LICENCAS (409), EMAIL_EM_OUTRA_EMPRESA (409),
 //   CONTA_COMPARTILHADA (409), PEDIDO_INVALIDO (400), MUITAS_TENTATIVAS (429), SUPABASE_* (502/503).
 
 export const VALIDADE_QR_MS = 10 * 60_000;
+/** QR mandado por e-mail (Central de Acesso): a pessoa pode demorar a abrir o e-mail. */
+export const VALIDADE_QR_EMAIL_MS = 60 * 60_000;
 const LIMITE_POR_MINUTO = 120;
 const MAX_EMAILS_LOTE = 50;
 /** Bloqueio de login para conta só do Add-on inativada (o Auth não tem "desativar"; ban derruba as sessões). */
@@ -47,7 +50,7 @@ export function senhaPadraoValida(s: string): boolean {
   return s.length >= 8 && new TextEncoder().encode(s).length <= 72 && /[A-Z]/.test(s) && /[a-z]/.test(s) && /[0-9]/.test(s);
 }
 const CENTRAL_PADRAO = 'https://acesso.loopapp.com.br';
-const ACOES = ['listar', 'cadastrar', 'reenviar_convite', 'redefinir_senha', 'senha_temporaria', 'gerar_qr', 'inativar', 'reativar', 'excluir'] as const;
+const ACOES = ['listar', 'cadastrar', 'reenviar_convite', 'redefinir_senha', 'senha_temporaria', 'gerar_qr', 'enviar_qr', 'inativar', 'reativar', 'excluir'] as const;
 type Acao = (typeof ACOES)[number];
 
 export interface OpcoesAcessoAdmin extends OpcoesSupabase {
@@ -94,6 +97,11 @@ interface Pedido {
   ator: string;
   enviarConvite: boolean;
   senha: string | null;
+  /** CPF/CNPJ da pessoa (só dígitos) e parceiro de origem no Sankhya (V20261121_254). */
+  documento: string | null;
+  codparc: number | null;
+  /** O Add-on mandou o CNPJ? Sem ele vale o da chave, e a pessoa é procurada nos CNPJs do mesmo contrato. */
+  cnpjInformado: boolean;
 }
 
 const COLUNAS = 'cpfCnpj,email,nomeCompleto,apps,situacao,auth_user_id,idUsuario,codusu_sankhya,ultimo_acesso_em,convite_enviado_em,trocar_senha';
@@ -103,6 +111,7 @@ export function lerPedido(o: Record<string, unknown>, cnpjDaChave: string): Pedi
   const acao = o.acao as Acao;
   if (!(ACOES as readonly string[]).includes(acao as string)) throw inval('Ação inválida.');
   if (!appValido(o.app)) throw inval('Aplicativo inválido.');
+  const cnpjInformado = soDigitos(o.cpfCnpj) !== '';
   const cnpj = soDigitos(o.cpfCnpj) || cnpjDaChave;
   if (cnpj.length !== 14 && cnpj.length !== 11) throw inval('CNPJ inválido.');
   const email = emailDe(o.email);
@@ -119,7 +128,16 @@ export function lerPedido(o: Record<string, unknown>, cnpjDaChave: string): Pedi
     if (!senhaPadraoValida(o.senha)) throw inval('A senha padrão precisa ter de 8 a 72 caracteres, com letra maiúscula, letra minúscula e número.');
     senha = o.senha;
   }
-  return { acao, app: o.app, cnpj, email: emails[0] ?? '', emails, nome, codusu, ator, enviarConvite: o.enviarConvite !== false, senha };
+  let documento: string | null = null;
+  if (acao === 'cadastrar' && o.documento != null && soDigitos(o.documento) !== '') {
+    if (!documentoValido(o.documento)) throw inval('CPF/CNPJ do usuário inválido.');
+    documento = soDigitos(o.documento);
+  }
+  const codparc = acao === 'cadastrar' && Number.isInteger(o.codparc) && (o.codparc as number) > 0 ? (o.codparc as number) : null;
+  return {
+    acao, app: o.app, cnpj, email: emails[0] ?? '', emails, nome, codusu, ator, enviarConvite: o.enviarConvite !== false, senha,
+    documento, codparc, cnpjInformado,
+  };
 }
 
 export function criarHandlerAcessoAdmin(op: OpcoesAcessoAdmin): (req: Request) => Promise<Response> {
@@ -159,6 +177,24 @@ export function criarHandlerAcessoAdmin(op: OpcoesAcessoAdmin): (req: Request) =
     });
     if (!l) throw new Recusa(404, 'NAO_ENCONTRADO', 'Usuário não encontrado neste aplicativo.');
     return l;
+  }
+
+  /**
+   * Pessoa já cadastrada: quando o Add-on não diz o CNPJ, procura a linha dela (e-mail + app) no CNPJ da chave e,
+   * se não achar, nos outros CNPJs do mesmo contrato. Ex.: a empresa do Sankhya trocou de CNPJ (chave nova) e a pessoa
+   * continua gravada no CNPJ antigo do contrato. Sem isso, excluir/inativar respondiam NAO_ENCONTRADO.
+   */
+  async function pedidoDaPessoa(p: Pedido, chave: Chave, email: string): Promise<Pedido> {
+    if (p.cnpjInformado) return p;
+    const cnpjs = await cnpjsPermitidos(chave, p.app);
+    const linhas = await sb.select<{ cpfCnpj: string }>('usuarios', {
+      select: 'cpfCnpj',
+      email: `eq.${email}`,
+      apps: `cs.{${p.app}}`,
+      cpfCnpj: `in.(${cnpjs.join(',')})`,
+    });
+    if (linhas.some((l) => l.cpfCnpj === p.cnpj) || linhas.length === 0) return p;
+    return { ...p, cnpj: linhas[0].cpfCnpj };
   }
 
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -260,7 +296,7 @@ export function criarHandlerAcessoAdmin(op: OpcoesAcessoAdmin): (req: Request) =
     let criada = false;
     // Senha padrão só para quem ainda não tem conta Loop: não troca a senha de quem já usa outro app/produto.
     if (id && p.senha) {
-      throw new Recusa(409, 'JA_TEM_SENHA', 'Este e-mail já tem acesso aos aplicativos Loop. Cadastre sem senha padrão: a pessoa entra com a senha que já usa.');
+      throw new Recusa(409, 'JA_TEM_SENHA', 'Este e-mail já tem uma conta de acesso Loop (cadastrada antes, aqui ou em outro aplicativo). Deixe a senha padrão vazia: a pessoa entra com a senha que já tem ou usa "Esqueci a senha".');
     }
     if (!id) {
       const r = await sb.auth('admin/users', 'POST', {
@@ -288,6 +324,9 @@ export function criarHandlerAcessoAdmin(op: OpcoesAcessoAdmin): (req: Request) =
       p_apps: [p.app],
       p_nome: p.nome,
       p_codusu: p.codusu,
+      // Só manda quando veio (função antiga sem estes parâmetros continua aceitando o pedido sem eles).
+      ...(p.documento ? { p_documento: p.documento } : {}),
+      ...(p.codparc ? { p_codparc: p.codparc } : {}),
       p_ator: p.ator,
       p_origem: 'addon',
       p_chave_id: chave.id,
@@ -312,15 +351,20 @@ export function criarHandlerAcessoAdmin(op: OpcoesAcessoAdmin): (req: Request) =
       if (conviteEnviado) await sb.update('usuarios', { cpfCnpj: `eq.${p.cnpj}`, email: `eq.${p.email}` }, { convite_enviado_em: new Date(agora()).toISOString() });
     }
     if (comSenhaPadrao) await auditar('senha_padrao', p, chave, p.email);
-    return { ok: true, codigo: 'OK', situacao: linha.situacao, novo: r.novo === true, apps: linha.apps, conviteEnviado, senhaPadrao: comSenhaPadrao };
+    // transferido: a pessoa estava em outra empresa (outro contrato) e passou para esta; lá ficou inativa (V20261121_253).
+    return {
+      ok: true, codigo: 'OK', situacao: linha.situacao, novo: r.novo === true, apps: linha.apps, conviteEnviado,
+      senhaPadrao: comSenhaPadrao, transferido: r.transferido === true,
+    };
   }
 
   async function reenviarOuRedefinir(p: Pedido, chave: Chave) {
     const resultado: { email: string; enviado: boolean; codigo: string }[] = [];
     for (const email of p.emails) {
+      const pe = await pedidoDaPessoa(p, chave, email);
       let linha: LinhaUsuario;
       try {
-        linha = await linhaDoUsuario(p, email);
+        linha = await linhaDoUsuario(pe, email);
       } catch (e) {
         if (e instanceof Recusa && e.codigo === 'NAO_ENCONTRADO' && p.emails.length > 1) {
           resultado.push({ email, enviado: false, codigo: 'NAO_ENCONTRADO' });
@@ -336,9 +380,9 @@ export function criarHandlerAcessoAdmin(op: OpcoesAcessoAdmin): (req: Request) =
       await invalidarTokens((await idDaConta(linha)), p.app);
       const enviado = await enviarPelaCentral(email, p.app, p.acao === 'reenviar_convite' ? 'convite' : 'recuperacao', chave);
       if (enviado && p.acao === 'reenviar_convite') {
-        await sb.update('usuarios', { cpfCnpj: `eq.${p.cnpj}`, email: `eq.${email}` }, { convite_enviado_em: new Date(agora()).toISOString() });
+        await sb.update('usuarios', { cpfCnpj: `eq.${pe.cnpj}`, email: `eq.${email}` }, { convite_enviado_em: new Date(agora()).toISOString() });
       }
-      await auditar(p.acao, p, chave, email, { enviado });
+      await auditar(p.acao, pe, chave, email, { enviado });
       resultado.push({ email, enviado, codigo: enviado ? 'OK' : 'ENVIO_FALHOU' });
     }
     if (p.emails.length === 1 && !resultado[0].enviado) {
@@ -353,7 +397,7 @@ export function criarHandlerAcessoAdmin(op: OpcoesAcessoAdmin): (req: Request) =
     if (linha.situacao === 'inativo') throw new Recusa(409, 'USUARIO_INATIVO', 'Usuário inativo. Reative antes de definir a senha.');
     // A mesma conta pode ser usada em outro produto Loop: não trocar a senha dela por fora.
     if (!(await contaExclusiva(id, p.cnpj))) {
-      throw new Recusa(409, 'CONTA_COMPARTILHADA', 'Este e-mail também é usado em outro produto Loop. Use "Enviar redefinição de senha".');
+      throw new Recusa(409, 'CONTA_COMPARTILHADA', 'Este e-mail também é usado em outro produto Loop. Use "Esqueci a senha".');
     }
     const senha = senhaTemporaria();
     const r = await sb.auth(`admin/users/${id}`, 'PUT', { password: senha });
@@ -363,7 +407,8 @@ export function criarHandlerAcessoAdmin(op: OpcoesAcessoAdmin): (req: Request) =
     return { ok: true, codigo: 'OK', senhaTemporaria: senha };
   }
 
-  async function gerarQr(p: Pedido, chave: Chave) {
+  /** Token de QR de uso único (só o hash no banco). Um QR válido por pessoa e app: o anterior deixa de valer. */
+  async function criarQr(p: Pedido, chave: Chave, validadeMs: number) {
     const linha = await linhaDoUsuario(p, p.email);
     if (linha.situacao !== 'convidado' && linha.situacao !== 'ativo') {
       throw new Recusa(409, 'USUARIO_INATIVO', 'Usuário inativo ou bloqueado. Reative antes de gerar o QR.');
@@ -376,7 +421,7 @@ export function criarHandlerAcessoAdmin(op: OpcoesAcessoAdmin): (req: Request) =
     }
     await invalidarTokens(id, p.app);
     const token = tokenAleatorio();
-    const expira = new Date(agora() + VALIDADE_QR_MS).toISOString();
+    const expira = new Date(agora() + validadeMs).toISOString();
     await sb.insert('usuarios_tokens', {
       tipo: 'qr',
       token_hash: await sha256Hex(token),
@@ -387,9 +432,35 @@ export function criarHandlerAcessoAdmin(op: OpcoesAcessoAdmin): (req: Request) =
       expira_em: expira,
       criado_por: p.ator,
     });
-    await auditar('gerar_qr', p, chave, p.email);
     // O QR não leva senha, CNPJ nem e-mail: só o token de uso único e o app.
-    return { ok: true, codigo: 'OK', expiraEm: expira, validadeSegundos: VALIDADE_QR_MS / 1000, conteudo: `${esquemaQr}?v=1&app=${p.app}&t=${token}` };
+    return { expira, conteudo: `${esquemaQr}?v=1&app=${p.app}&t=${token}` };
+  }
+
+  async function gerarQr(p: Pedido, chave: Chave) {
+    const { expira, conteudo } = await criarQr(p, chave, VALIDADE_QR_MS);
+    await auditar('gerar_qr', p, chave, p.email);
+    return { ok: true, codigo: 'OK', expiraEm: expira, validadeSegundos: VALIDADE_QR_MS / 1000, conteudo };
+  }
+
+  /** QR por e-mail: gera um QR novo (60 min) e a Central manda para o dono do e-mail. O QR não volta ao Add-on. */
+  async function enviarQr(p: Pedido, chave: Chave) {
+    const { expira, conteudo } = await criarQr(p, chave, VALIDADE_QR_EMAIL_MS);
+    let enviado = false;
+    try {
+      const r = await http(`${central}/api/v1/service/access-qr`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-loop-cliente-chave': chave.valor },
+        body: JSON.stringify({ identifier: p.email, app: p.app, conteudo, expiraEm: expira }),
+      });
+      enviado = r.status === 202;
+    } catch {
+      console.error('acesso-admin', 'central de acesso indisponível', 'qr');
+    }
+    await auditar('enviar_qr', p, chave, p.email, { enviado });
+    if (!enviado) {
+      throw new Recusa(503, 'ENVIO_FALHOU', 'Não foi possível enviar o QR por e-mail agora. Mostre o QR na tela ou tente de novo em instantes.');
+    }
+    return { ok: true, codigo: 'OK', expiraEm: expira, validadeSegundos: VALIDADE_QR_EMAIL_MS / 1000 };
   }
 
   async function inativar(p: Pedido, chave: Chave) {
@@ -447,11 +518,15 @@ export function criarHandlerAcessoAdmin(op: OpcoesAcessoAdmin): (req: Request) =
       if (!limitar(valorChave.slice(0, 64) || 'sem-chave')) throw new Recusa(429, 'MUITAS_TENTATIVAS', 'Muitas tentativas. Aguarde um minuto.');
       const corpo = await lerCorpo(req);
       const chave = await chaveDoAddon(valorChave);
-      const p = lerPedido(corpo, soDigitos(chave.cpf_cnpj));
+      let p = lerPedido(corpo, soDigitos(chave.cpf_cnpj));
       acao = p.acao;
       app = p.app;
       if (p.acao !== 'listar' && p.cnpj !== soDigitos(chave.cpf_cnpj) && !(await cnpjsPermitidos(chave, p.app)).includes(p.cnpj)) {
         throw new Recusa(403, 'FORA_DO_CLIENTE', 'Esta empresa não pertence à licença desta instalação.');
+      }
+      // Ações sobre uma pessoa já cadastrada: acha o CNPJ dela no contrato (o lote faz isso por e-mail).
+      if (['reenviar_convite', 'senha_temporaria', 'gerar_qr', 'enviar_qr', 'inativar', 'reativar', 'excluir'].includes(p.acao)) {
+        p = await pedidoDaPessoa(p, chave, p.email);
       }
       const corpoResposta = await {
         listar,
@@ -460,6 +535,7 @@ export function criarHandlerAcessoAdmin(op: OpcoesAcessoAdmin): (req: Request) =
         redefinir_senha: reenviarOuRedefinir,
         senha_temporaria: definirSenhaTemporaria,
         gerar_qr: gerarQr,
+        enviar_qr: enviarQr,
         inativar,
         reativar,
         excluir,

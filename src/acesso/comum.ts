@@ -57,6 +57,29 @@ export async function lerCorpo(req: Request, max = 8192): Promise<Record<string,
 }
 
 export const soDigitos = (v: unknown) => String(v ?? '').replace(/\D/g, '');
+
+/** CPF (11) ou CNPJ (14) com dígitos verificadores corretos; sequência repetida é inválida. */
+export function documentoValido(v: unknown): boolean {
+  const d = soDigitos(v);
+  if (!/^(\d{11}|\d{14})$/.test(d) || /^(\d)\1+$/.test(d)) return false;
+  const n = d.split('').map(Number);
+  if (d.length === 11) {
+    const dv = (len: number) => {
+      let s = 0;
+      for (let i = 0; i < len; i++) s += n[i] * (len + 1 - i);
+      const r = (s * 10) % 11;
+      return r === 10 ? 0 : r;
+    };
+    return dv(9) === n[9] && dv(10) === n[10];
+  }
+  const dv = (len: number) => {
+    const pesos = len === 12 ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    const s = pesos.reduce((t, p, i) => t + n[i] * p, 0);
+    const r = s % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  return dv(12) === n[12] && dv(13) === n[13];
+}
 export const emailDe = (v: unknown) => String(v ?? '').trim().toLowerCase();
 export const emailValido = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && e.length <= 254;
 export const appValido = (a: unknown): a is AppAddon => typeof a === 'string' && (APPS_ADDON as readonly string[]).includes(a);

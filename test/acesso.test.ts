@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { criarHandlerAcessoAdmin, lerPedido } from '../src/acesso/admin.ts';
-import { senhaTemporaria, sha256Hex, tokenAleatorio } from '../src/acesso/comum.ts';
+import { documentoValido, senhaTemporaria, sha256Hex, tokenAleatorio } from '../src/acesso/comum.ts';
 import { criarHandlerAcessoContexto } from '../src/acesso/contexto.ts';
 import { criarHandlerAcessoQr } from '../src/acesso/qr.ts';
 import { ErroGateway } from '../src/core/tipos.ts';
@@ -303,6 +303,89 @@ test('acesso-admin cadastrar: Central fora do ar não desfaz o cadastro (convite
   assert.equal(r.status, 200);
   assert.equal(corpo.conviteEnviado, false);
   assert.equal(sb.de('DELETE', `admin/users/${ID}`).length, 0);
+});
+
+test('acesso-admin enviar_qr: QR novo de 60 min vai para a Central e não volta ao Add-on', async () => {
+  const sb = supabaseFalso(rotasBase({ 'POST /api/v1/service/access-qr': () => ({ status: 202, corpo: {} }) }));
+  const r = await admin(sb)(pedido({ acao: 'enviar_qr', app: 'LoopStok', email: 'ana@a.com' }));
+  const corpo = await r.json();
+  assert.equal(r.status, 200, JSON.stringify(corpo));
+  assert.equal(corpo.validadeSegundos, 3600);
+  assert.equal(corpo.conteudo, undefined, 'o QR não volta ao Add-on');
+  const envio = sb.de('POST', '/api/v1/service/access-qr')[0];
+  assert.match(envio.corpo.conteudo, /^loopacesso:\/\/qr\?v=1&app=LoopStok&t=/);
+  assert.equal(envio.corpo.identifier, 'ana@a.com');
+  assert.equal(envio.headers['x-loop-cliente-chave'], CHAVE);
+  const token = sb.de('POST', 'usuarios_tokens')[0].corpo;
+  assert.ok(Date.parse(token.expira_em) - Date.now() > 55 * 60_000);
+  assert.ok(!JSON.stringify(token).includes(envio.corpo.conteudo.split('t=')[1]), 'só o hash no banco');
+});
+
+test('acesso-admin enviar_qr: conta compartilhada recusa; Central fora do ar = 503', async () => {
+  let r = await admin(supabaseFalso(rotasBase({ 'POST rpc/acesso_conta_exclusiva': () => ({ corpo: false }) })))(
+    pedido({ acao: 'enviar_qr', app: 'LoopStok', email: 'ana@a.com' }),
+  );
+  assert.equal(r.status, 409);
+  r = await admin(supabaseFalso(rotasBase({ 'POST /api/v1/service/access-qr': () => ({ status: 500, corpo: {} }) })))(
+    pedido({ acao: 'enviar_qr', app: 'LoopStok', email: 'ana@a.com' }),
+  );
+  assert.equal(r.status, 503);
+  assert.equal((await r.json()).codigo, 'ENVIO_FALHOU');
+});
+
+test('acesso-admin: pessoa gravada em outro CNPJ do contrato é achada (excluir/inativar não dão NAO_ENCONTRADO)', async () => {
+  const sb = supabaseFalso(
+    rotasBase({
+      'GET usuarios': () => ({ corpo: [{ ...LINHA, cpfCnpj: FILIAL }] }),
+      'POST rpc/acesso_usuario_excluir': () => ({ corpo: { ok: true, codigo: 'EXCLUIDO', conta_exclusiva: false } }),
+    }),
+  );
+  const r = await admin(sb)(pedido({ acao: 'excluir', app: 'LoopStok', email: 'ana@a.com' }));
+  assert.equal(r.status, 200);
+  assert.equal(sb.de('POST', 'rpc/acesso_usuario_excluir')[0].corpo.p_cpf_cnpj, FILIAL);
+});
+
+test('acesso-admin: CNPJ informado pelo Add-on é respeitado (não procura em outro)', async () => {
+  const sb = supabaseFalso(
+    rotasBase({ 'POST rpc/acesso_usuario_excluir': () => ({ corpo: { ok: true, codigo: 'EXCLUIDO', conta_exclusiva: false } }) }),
+  );
+  await admin(sb)(pedido({ acao: 'excluir', app: 'LoopStok', email: 'ana@a.com', cpfCnpj: CNPJ }));
+  assert.equal(sb.de('POST', 'rpc/acesso_usuario_excluir')[0].corpo.p_cpf_cnpj, CNPJ);
+});
+
+test('acesso-admin cadastrar: pessoa transferida de outra empresa volta com transferido=true', async () => {
+  const sb = supabaseFalso(
+    rotasBase({
+      'POST rpc/acesso_auth_id_por_email': () => ({ corpo: ID }),
+      'POST rpc/acesso_usuario_gravar': () => ({ corpo: { ok: true, codigo: 'OK', situacao: 'convidado', novo: true, transferido: true } }),
+    }),
+  );
+  const r = await admin(sb)(pedido({ acao: 'cadastrar', app: 'LoopStok', email: 'ana@a.com' }));
+  const corpo = await r.json();
+  assert.equal(r.status, 200);
+  assert.equal(corpo.transferido, true);
+});
+
+test('documentoValido: CPF e CNPJ com dígitos verificadores', () => {
+  assert.equal(documentoValido('529.982.247-25'), true);
+  assert.equal(documentoValido('11.222.333/0001-81'), true);
+  assert.equal(documentoValido('529.982.247-26'), false);
+  assert.equal(documentoValido('11111111111'), false);
+  assert.equal(documentoValido('123'), false);
+});
+
+test('acesso-admin cadastrar: nome, documento e parceiro vão para a gravação; documento inválido recusa', async () => {
+  const sb = supabaseFalso(rotasBase());
+  const r = await admin(sb)(pedido({ acao: 'cadastrar', app: 'LoopStok', email: 'ana@a.com', nome: 'Ana Souza', documento: '529.982.247-25', codparc: 77 }));
+  assert.equal(r.status, 200);
+  const g = sb.de('POST', 'rpc/acesso_usuario_gravar')[0].corpo;
+  assert.deepEqual([g.p_nome, g.p_documento, g.p_codparc], ['Ana Souza', '52998224725', 77]);
+  const sem = supabaseFalso(rotasBase());
+  await admin(sem)(pedido({ acao: 'cadastrar', app: 'LoopStok', email: 'ana@a.com' }));
+  const g2 = sem.de('POST', 'rpc/acesso_usuario_gravar')[0].corpo;
+  assert.equal('p_documento' in g2, false, 'sem documento não manda o parâmetro');
+  const ruim = await admin(supabaseFalso(rotasBase()))(pedido({ acao: 'cadastrar', app: 'LoopStok', email: 'ana@a.com', documento: '111.111.111-11' }));
+  assert.equal(ruim.status, 400);
 });
 
 test('acesso-admin listar: situação e contador de licenças', async () => {
