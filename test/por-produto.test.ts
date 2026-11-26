@@ -284,3 +284,53 @@ test('conferência do vendedor: erro do Sankhya vai para o log sem e-mail nem tr
   });
   assert.equal(motivoSankhya({ status: '3' }), 'status 3');
 });
+
+test('E6: Pix por nota vai ao Add-on do Link, só para o vendedor logado e com o corpo no formato', async () => {
+  const corpos: Record<string, Record<string, unknown>> = {
+    'LoopPixNotaSP.doCriarPixNota': { codEmp: 1, nunota: '123', idLocal: 'app-pix-0001' },
+    'LoopPixNotaSP.doStatusPixNota': { codEmp: '1', nunota: 123, txid: 'LP0000000012320261120101010' },
+  };
+  for (const [servico, corpo] of Object.entries(corpos)) {
+    const regra = regraDoServico(servico);
+    assert.equal(regra?.acesso, 'VENDEDOR', servico);
+    assert.equal(regra?.modulo, 'loop-link-pagamento', servico);
+    assert.equal(regra?.conferir?.(corpo), null, servico);
+    assert.ok(regra?.conferir?.({ ...corpo, codEmp: '1 OR 1=1' }), servico);
+    assert.ok(regra?.conferir?.({ ...corpo, nunota: 12345678901 }), servico);
+    assert.ok(regra?.conferir?.({ ...corpo, nunota: undefined }), servico);
+  }
+  const criar = regraDoServico('LoopPixNotaSP.doCriarPixNota');
+  assert.ok(criar?.conferir?.({ codEmp: 1, nunota: 1, idLocal: 'curto' }));
+  const status = regraDoServico('LoopPixNotaSP.doStatusPixNota');
+  assert.ok(status?.conferir?.({ codEmp: 1, nunota: 1, txid: "LP' OR 1=1 --" }));
+  assert.equal(regraDoServico('LoopPixNotaSP.doBaixar'), undefined);
+
+  const { deps, chamadas } = montar(['LoopEcommerce']);
+  assert.equal((await pedir('LoopPixNotaSP.doCriarPixNota', deps)).status, 401);
+  assert.equal(chamadas.length, 0);
+  const fora = comVendedor(false);
+  assert.equal((await logado('LoopPixNotaSP.doCriarPixNota', fora.deps, corpos['LoopPixNotaSP.doCriarPixNota'])).status, 403);
+  assert.equal(fora.chamadas.length, 0);
+  const dentro = comVendedor(true);
+  assert.equal((await logado('LoopPixNotaSP.doCriarPixNota', dentro.deps, { codEmp: 1, nunota: 1, idLocal: 'x' })).status, 403);
+  assert.equal(dentro.chamadas.length, 0);
+  assert.equal((await logado('LoopPixNotaSP.doCriarPixNota', dentro.deps, corpos['LoopPixNotaSP.doCriarPixNota'])).status, 200);
+  assert.deepEqual(dentro.chamadas, [{ servico: 'LoopPixNotaSP.doCriarPixNota', modulo: 'loop-link-pagamento' }]);
+});
+
+test('Link no fim da venda: só o vendedor logado, empresa e pedido numéricos, no Add-on do Link', async () => {
+  const regra = regraDoServico('LoopPaymentLinkAppSP.doGerarLinkPedido');
+  assert.equal(regra?.acesso, 'VENDEDOR');
+  assert.equal(regra?.modulo, 'loop-link-pagamento');
+  assert.equal(regra?.conferir?.({ codEmp: 57, nunota: '2179984' }), null);
+  assert.ok(regra?.conferir?.({ codEmp: '1 OR 1=1', nunota: 1 }));
+  assert.ok(regra?.conferir?.({ codEmp: 1 }));
+  assert.equal(regraDoServico('LoopPaymentLinkAppSP.doGerarLinkVenda'), undefined);
+
+  const { deps, chamadas } = montar(['LoopEcommerce']);
+  assert.equal((await pedir('LoopPaymentLinkAppSP.doGerarLinkPedido', deps)).status, 401);
+  assert.equal(chamadas.length, 0);
+  const dentro = comVendedor(true);
+  assert.equal((await logado('LoopPaymentLinkAppSP.doGerarLinkPedido', dentro.deps, { codEmp: 1, nunota: 10 })).status, 200);
+  assert.deepEqual(dentro.chamadas, [{ servico: 'LoopPaymentLinkAppSP.doGerarLinkPedido', modulo: 'loop-link-pagamento' }]);
+});

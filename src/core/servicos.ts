@@ -234,6 +234,12 @@ const METODOS_VENDEDOR: ReadonlySet<string> = new Set([
   'LoopEcommerceCaixaExternoSP.doReceber',
   'LoopEcommerceCaixaExternoSP.doMovimento',
   'LoopEcommerceCaixaExternoSP.doFecharCaixa',
+  // E4: o vendedor fatura o pedido no celular (o Add-on confere sessão, "pode faturar", TOP da configuração e idLocal).
+  'LoopEcommerceFaturamentoVendedorSP.doFaturarPedido',
+  'LoopEcommerceFaturamentoVendedorSP.doStatusNota',
+  'LoopEcommerceFaturamentoVendedorSP.doEnviarNota',
+  'LoopEcommerceFaturamentoVendedorSP.doResumoVendas',
+  'LoopEcommerceFaturamentoVendedorSP.doFormasRecebimento',
   // M24: perfis do usuário (vendedor, televendas, promotor, gestor) e os módulos de cada um.
   'LoopEcommercePerfisAppSP.doMeusPerfis',
   // M03: crédito do cliente (o Add-on confere vínculo e o parâmetro da empresa).
@@ -296,6 +302,30 @@ const METODOS_VENDEDOR: ReadonlySet<string> = new Set([
   'LoopEcommerceUsersSP.doConsultar',
 ]);
 
+/**
+ * E6: Pix por nota, no Add-on do Link. Só o vendedor logado (mesma conferência dos métodos do E-commerce); o corpo
+ * diz só qual nota. Valor, títulos e banco o Add-on tira do Sankhya, e confere empresa, nota de venda confirmada e
+ * títulos Pix em aberto.
+ */
+const ID_SANKHYA = /^\d{1,10}$/;
+const ID_LOCAL = /^[A-Za-z0-9_-]{8,64}$/;
+const TXID = /^[A-Za-z0-9]{26,35}$/;
+const idSankhya = (v: unknown) => (typeof v === 'number' || typeof v === 'string') && ID_SANKHYA.test(String(v).trim());
+const conferirPixNota = (extra: 'idLocal' | 'txid') => (corpo: Record<string, unknown>): string | null => {
+  if (!idSankhya(corpo.codEmp)) return 'codEmp inválido';
+  if (!idSankhya(corpo.nunota)) return 'nunota inválida';
+  if (extra === 'idLocal') return typeof corpo.idLocal === 'string' && ID_LOCAL.test(corpo.idLocal) ? null : 'idLocal inválido';
+  return typeof corpo.txid === 'string' && TXID.test(corpo.txid) ? null : 'txid inválido';
+};
+const PIX_NOTA_VENDEDOR: Readonly<Record<string, RegraServico>> = Object.freeze({
+  'LoopPixNotaSP.doCriarPixNota': vendedor(CONTEXTO_LINK, undefined, conferirPixNota('idLocal')),
+  'LoopPixNotaSP.doStatusPixNota': vendedor(CONTEXTO_LINK, undefined, conferirPixNota('txid')),
+  // Link de pagamento no fim da venda do app ("Enviar link no fim da venda"). O corpo só diz empresa e pedido; o
+  // Add-on do Link confere o pedido da empresa e gera o link pela configuração do Sankhya.
+  'LoopPaymentLinkAppSP.doGerarLinkPedido': vendedor(CONTEXTO_LINK, undefined, (corpo) =>
+    !idSankhya(corpo.codEmp) ? 'codEmp inválido' : !idSankhya(corpo.nunota) ? 'nunota inválida' : null),
+});
+
 /** Configuração da loja para o vendedor: a senha de SMTP não sai do servidor. */
 const CONFIG_VENDEDOR = vendedor(CONTEXTO_ECOMMERCE, ['smtpPass', 'loopChaveCliente']);
 
@@ -306,5 +336,6 @@ export function regraDoServico(serviceName: string): RegraServico | undefined {
   if (Object.prototype.hasOwnProperty.call(NATIVOS_VENDEDOR, serviceName)) return vendedor(NATIVOS_VENDEDOR[serviceName]);
   // O vendedor envia pelo Hub do cliente: o token da Loop API não sai do gateway.
   if (serviceName === 'LoopHubMensageriaSP.doEnviarMensagem') return vendedor(CONTEXTO_WHATSAPP);
+  if (Object.prototype.hasOwnProperty.call(PIX_NOTA_VENDEDOR, serviceName)) return PIX_NOTA_VENDEDOR[serviceName];
   return METODOS_VENDEDOR.has(serviceName) ? vendedor(CONTEXTO_ECOMMERCE) : undefined;
 }
